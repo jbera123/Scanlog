@@ -14,11 +14,12 @@ import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
 import androidx.compose.material3.AlertDialog
-import androidx.compose.material3.Button
 import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.OutlinedButton
+import androidx.compose.material3.Scaffold
 import androidx.compose.material3.Text
+import androidx.compose.material3.Button
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.collectAsState
@@ -29,6 +30,7 @@ import androidx.compose.runtime.setValue
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.res.stringResource
+import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.lifecycle.viewmodel.compose.viewModel
 import com.example.scanlog.R
@@ -36,26 +38,22 @@ import com.example.scanlog.data.BarcodeCatalog
 import com.example.scanlog.ui.viewmodel.ScanViewModel
 import com.example.scanlog.util.ScannerConstants
 import java.time.LocalDate
-import com.example.scanlog.ui.components.BarcodeRow
-
 
 @Composable
 fun ScanScreen(
-    onOpenHistory: () -> Unit,
     vm: ScanViewModel = viewModel()
 ) {
-    val context = LocalContext.current
-    val appContext = context.applicationContext
-
+    val appContext = LocalContext.current.applicationContext
     val catalog = remember(appContext) { BarcodeCatalog(appContext) }
 
     val counts by vm.todayCounts.collectAsState()
     var showUndoConfirm by remember { mutableStateOf(false) }
 
+    // updates if app stays open across midnight
     val today = LocalDate.now().toString()
 
-    // Register scanner broadcast receiver while this screen is in composition.
-    DisposableEffect(Unit) {
+    // scanner broadcast receiver
+    DisposableEffect(appContext) {
         val receiver = object : BroadcastReceiver() {
             override fun onReceive(ctx: Context?, intent: Intent?) {
                 if (intent?.action != ScannerConstants.ACTION_DECODE) return
@@ -79,7 +77,6 @@ fun ScanScreen(
                 @Suppress("DEPRECATION")
                 appContext.unregisterReceiver(receiver)
             } catch (_: IllegalArgumentException) {
-                // Receiver was already unregistered; ignore.
             }
         }
     }
@@ -90,54 +87,66 @@ fun ScanScreen(
     }
     val total = sorted.sumOf { it.second }
 
-    Column(Modifier.fillMaxSize().padding(16.dp)) {
-        Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) {
-            Text(
-                text = stringResource(R.string.today, today),
-                style = MaterialTheme.typography.titleLarge
-            )
-            Text(
-                text = stringResource(R.string.total, total),
-                style = MaterialTheme.typography.titleMedium
-            )
-        }
-
-        Spacer(Modifier.height(12.dp))
-
-        Row(
-            Modifier.fillMaxWidth(),
-            horizontalArrangement = Arrangement.spacedBy(12.dp)
-        ) {
-            Button(onClick = onOpenHistory, modifier = Modifier.weight(1f)) {
-                Text(stringResource(R.string.tab_history))
-            }
-            OutlinedButton(
-                onClick = { showUndoConfirm = true },
-                modifier = Modifier.weight(1f),
-                enabled = total > 0
+    Scaffold(
+        bottomBar = {
+            Row(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .padding(16.dp),
+                horizontalArrangement = Arrangement.End
             ) {
-                Text(stringResource(R.string.undo))
+                OutlinedButton(
+                    onClick = { showUndoConfirm = true },
+                    enabled = total > 0
+                ) {
+                    Text(stringResource(R.string.undo))
+                }
             }
         }
-
-        Spacer(Modifier.height(16.dp))
-
-        if (sorted.isEmpty()) {
-            Text(stringResource(R.string.no_scans_yet), style = MaterialTheme.typography.bodyLarge)
-            Spacer(Modifier.height(8.dp))
-            Text(
-                stringResource(R.string.scanner_mode_broadcast),
-                style = MaterialTheme.typography.bodyMedium
-            )
-        } else {
-            sorted.forEach { (code, count) ->
-                BarcodeRow(
-                    leftText = catalog.displayText(code),
-                    rightText = count.toString()
+    ) { padding ->
+        Column(
+            modifier = Modifier
+                .fillMaxSize()
+                .padding(padding)
+                .padding(16.dp)
+        ) {
+            Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) {
+                Text(
+                    text = stringResource(R.string.today, today),
+                    style = MaterialTheme.typography.titleLarge
                 )
-                HorizontalDivider()
+                Text(
+                    text = stringResource(R.string.total, total),
+                    style = MaterialTheme.typography.titleMedium
+                )
             }
 
+            Spacer(Modifier.height(12.dp))
+
+            if (sorted.isEmpty()) {
+                Text(stringResource(R.string.no_scans_yet), style = MaterialTheme.typography.bodyLarge)
+                Spacer(Modifier.height(8.dp))
+                Text(stringResource(R.string.scanner_mode_broadcast), style = MaterialTheme.typography.bodyMedium)
+            } else {
+                sorted.forEach { (code, count) ->
+                    Row(
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .padding(vertical = 6.dp),
+                        horizontalArrangement = Arrangement.SpaceBetween
+                    ) {
+                        Text(
+                            text = catalog.displayText(code),
+                            style = MaterialTheme.typography.bodyLarge,
+                            maxLines = 1,
+                            overflow = TextOverflow.Ellipsis,
+                            modifier = Modifier.weight(1f)
+                        )
+                        Text(count.toString(), style = MaterialTheme.typography.bodyLarge)
+                    }
+                    HorizontalDivider()
+                }
+            }
         }
     }
 

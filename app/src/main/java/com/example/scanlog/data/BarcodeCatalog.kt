@@ -22,16 +22,16 @@ class BarcodeCatalog(context: Context) {
     private val map: Map<String, String> by lazy { loadCsv() }
 
     fun chineseNameFor(codeRaw: String): String? {
-        val code = codeRaw.trim()
+        val code = normalize(codeRaw)
         if (code.isEmpty()) return null
         return map[code]
     }
 
     fun displayText(codeRaw: String): String {
-        val code = codeRaw.trim()
+        val code = normalize(codeRaw)
         if (code.isEmpty()) return ""
         val zh = chineseNameFor(code) ?: return code
-        // Keep code exactly as-is; append Chinese for UI
+        // Keep code exactly as-is (normalized the same way everywhere); append Chinese for UI
         return "$code  $zh"
     }
 
@@ -59,7 +59,7 @@ class BarcodeCatalog(context: Context) {
                     }
 
                     if (cols.size >= 2) {
-                        val code = cols[0].trim()
+                        val code = normalize(cols[0])
                         val zh = cols[1].trim()
                         if (code.isNotEmpty() && zh.isNotEmpty()) {
                             result[code] = zh
@@ -104,4 +104,7 @@ class BarcodeCatalog(context: Context) {
         out.add(sb.toString())
         return out
     }
+
+    private fun normalize(s: String): String =
+        s.trim().uppercase()
 }

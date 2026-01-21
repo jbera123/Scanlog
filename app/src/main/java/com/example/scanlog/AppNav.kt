@@ -73,10 +73,9 @@ fun AppNav() {
                 startDestination = Tab.Scan.route
             ) {
                 composable(Tab.Scan.route) {
-                    ScanScreen(
-                        onOpenHistory = { navController.navigate(Tab.History.route) }
-                    )
+                    ScanScreen()
                 }
+
                 composable(Tab.Counts.route) { CountsScreen() }
                 composable(Tab.History.route) {
                     HistoryScreen(

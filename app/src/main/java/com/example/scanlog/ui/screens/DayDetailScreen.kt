@@ -1,5 +1,11 @@
 package com.example.scanlog.ui.screens
 
+import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.filled.MoreVert
+import androidx.compose.material3.DropdownMenu
+import androidx.compose.material3.DropdownMenuItem
+import androidx.compose.material3.Icon
+import androidx.compose.material3.IconButton
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
@@ -26,14 +32,12 @@ import androidx.compose.runtime.setValue
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.res.stringResource
+import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.lifecycle.viewmodel.compose.viewModel
 import com.example.scanlog.R
 import com.example.scanlog.data.BarcodeCatalog
 import com.example.scanlog.ui.viewmodel.DayViewModel
-import com.example.scanlog.ui.components.BarcodeRow
-import androidx.compose.ui.text.style.TextOverflow
-
 
 @Composable
 fun DayDetailScreen(
@@ -41,8 +45,7 @@ fun DayDetailScreen(
     onBack: () -> Unit,
     vm: DayViewModel = viewModel()
 ) {
-    val context = LocalContext.current
-    val appContext = context.applicationContext
+    val appContext = LocalContext.current.applicationContext
     val catalog = remember(appContext) { BarcodeCatalog(appContext) }
 
     val counts by vm.counts(day).collectAsState(initial = emptyMap())
@@ -64,6 +67,7 @@ fun DayDetailScreen(
             horizontalArrangement = Arrangement.SpaceBetween
         ) {
             Column {
+                // Day string stays raw (ISO date)
                 Text(day, style = MaterialTheme.typography.titleLarge)
                 Text(
                     text = stringResource(R.string.total, total),
@@ -92,10 +96,10 @@ fun DayDetailScreen(
                             .padding(vertical = 6.dp),
                         horizontalArrangement = Arrangement.SpaceBetween
                     ) {
-                        Column(Modifier.weight(1f)) {
+                        // Left side: code + chinese name (if exists)
+                        Column(modifier = Modifier.weight(1f)) {
                             Text(
                                 text = catalog.displayText(code),
-                                modifier = Modifier.weight(1f),
                                 style = MaterialTheme.typography.bodyLarge,
                                 maxLines = 1,
                                 overflow = TextOverflow.Ellipsis
@@ -106,18 +110,41 @@ fun DayDetailScreen(
                             )
                         }
 
-                        Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                            OutlinedButton(
-                                onClick = { vm.increment(day, code, -1) },
-                                enabled = count > 0
-                            ) { Text("–") }
+                        // Right side: actions (no Icons -> no "Remove" error)
+                        var menuExpanded by remember(code) { mutableStateOf(false) }
 
-                            Button(onClick = { vm.increment(day, code, +1) }) { Text("+") }
-
-                            OutlinedButton(onClick = { confirmDeleteCode = code }) {
-                                Text(stringResource(R.string.delete))
-                            }
+                        IconButton(onClick = { menuExpanded = true }) {
+                            Icon(Icons.Filled.MoreVert, contentDescription = "More")
                         }
+
+                        DropdownMenu(
+                            expanded = menuExpanded,
+                            onDismissRequest = { menuExpanded = false }
+                        ) {
+                            DropdownMenuItem(
+                                text = { Text("+1") },
+                                onClick = {
+                                    menuExpanded = false
+                                    vm.increment(day, code, +1)
+                                }
+                            )
+                            DropdownMenuItem(
+                                text = { Text("-1") },
+                                enabled = count > 0,
+                                onClick = {
+                                    menuExpanded = false
+                                    vm.increment(day, code, -1)
+                                }
+                            )
+                            DropdownMenuItem(
+                                text = { Text(stringResource(R.string.delete)) },
+                                onClick = {
+                                    menuExpanded = false
+                                    confirmDeleteCode = code
+                                }
+                            )
+                        }
+
                     }
                     HorizontalDivider()
                 }
