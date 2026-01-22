@@ -1,4 +1,5 @@
 <resources>
+
     <!-- Tabs -->
     <string name="tab_scan">扫描</string>
     <string name="tab_counts">统计</string>
@@ -9,22 +10,24 @@
     <string name="today">今天：%1$s</string>
     <string name="total">合计：%1$d</string>
     <string name="back">返回</string>
+    <string name="undo">撤销</string>
     <string name="cancel">取消</string>
     <string name="delete">删除</string>
 
     <!-- Scan screen -->
-    <string name="undo">撤销</string>
     <string name="no_scans_yet">暂无扫描记录。</string>
     <string name="scanner_mode_broadcast">扫描模式：广播</string>
     <string name="undo_confirm_title">撤销上一次扫描？</string>
     <string name="undo_confirm_text">将从最近一次扫描的条码数量中减 1。</string>
+    <string name="scan_not_logged">扫描未记录（请切换到扫描页）</string>
 
-    <!-- History screen -->
+    <!-- History -->
     <string name="history_title">历史</string>
+    <string name="history_empty">暂无历史记录。</string>
     <string name="no_history_yet">暂无历史记录。</string>
     <string name="history_open">&gt;</string>
 
-    <!-- Day detail screen -->
+    <!-- Day detail -->
     <string name="day_total">合计：%1$d</string>
     <string name="count_label">数量：%1$d</string>
     <string name="no_scans_for_day">该日期暂无扫描记录。</string>
@@ -32,17 +35,19 @@
     <string name="delete_code_text">从 %2$s 中移除 %1$s？</string>
 
     <!-- Counts screen -->
-    <string name="counts_today_title">今日计数</string>
+    <string name="counts_today_title">今日统计</string>
     <string name="search_code_label">搜索条码</string>
     <string name="code_header">条码</string>
     <string name="count_header">数量</string>
     <string name="no_data">暂无数据。</string>
 
-    <!-- 设置页 -->
+    <!-- Settings -->
     <string name="settings_title">设置</string>
     <string name="settings_dup_guard">重复扫描防护</string>
     <string name="settings_dup_window_seconds">重复窗口（秒）</string>
-    <string name="settings_dup_window_hint">在此时间窗口内重复扫描同一条码将被忽略。</string>
+    <string name="settings_dup_window_hint">
+        在此时间窗口内重复扫描同一条码将被忽略。
+    </string>
     <string name="settings_apply">应用</string>
 
 </resources>

@@ -1,6 +1,8 @@
 package com.example.scanlog.data
 
 import android.content.Context
+import androidx.datastore.core.DataStore
+import androidx.datastore.preferences.core.Preferences
 import androidx.datastore.preferences.core.edit
 import androidx.datastore.preferences.core.longPreferencesKey
 import androidx.datastore.preferences.core.stringPreferencesKey
@@ -10,7 +12,9 @@ import kotlinx.coroutines.flow.map
 import org.json.JSONObject
 import java.time.LocalDate
 
-private val Context.dataStore by preferencesDataStore(name = "scanlog_store")
+// IMPORTANT:
+// Use a UNIQUE name to avoid colliding with other files' Context.dataStore / Context.scanlogDataStore.
+private val Context.scanStoreDataStore: DataStore<Preferences> by preferencesDataStore(name = "scanlog_store")
 
 data class DayState(
     val counts: Map<String, Int> = emptyMap(),
@@ -18,43 +22,45 @@ data class DayState(
     val lastTsMs: Long? = null
 )
 
-class ScanStore(private val context: Context) {
+class ScanStore(context: Context) {
+
+    private val appContext = context.applicationContext
+    private val ds = appContext.scanStoreDataStore
 
     private object Keys {
-        val JSON = stringPreferencesKey("days_json")
-        val DUP_GUARD = stringPreferencesKey("dup_guard_enabled") // "true"/"false"
+        val DAYS_JSON = stringPreferencesKey("days_json")
+
+        // Store dup enabled as string "true"/"false" for backwards compatibility with your existing code
+        val DUP_ENABLED = stringPreferencesKey("dup_guard_enabled")
         val DUP_WINDOW_MS = longPreferencesKey("dup_window_ms")
     }
 
-    // Defaults
-    private val defaultDupGuardEnabled = true
+    private val defaultDupEnabled = true
     private val defaultDupWindowMs = 2000L
+
+    /* ---------------- helpers ---------------- */
 
     private fun todayKey(): String = LocalDate.now().toString()
 
-    private fun parseAll(json: String): JSONObject =
+    private fun parseRoot(json: String): JSONObject =
         if (json.isBlank()) JSONObject() else JSONObject(json)
 
-    private fun dayObject(root: JSONObject, day: String): JSONObject =
-        if (root.has(day)) root.getJSONObject(day) else JSONObject()
-
     private fun readDay(root: JSONObject, day: String): DayState {
-        val d = dayObject(root, day)
+        if (!root.has(day)) return DayState()
 
-        val countsObj = if (d.has("counts")) d.getJSONObject("counts") else JSONObject()
+        val d = root.getJSONObject(day)
+        val countsObj = d.optJSONObject("counts") ?: JSONObject()
+
         val counts = buildMap<String, Int> {
-            val keys = countsObj.keys()
-            while (keys.hasNext()) {
-                val k = keys.next()
+            val it = countsObj.keys()
+            while (it.hasNext()) {
+                val k = it.next()
                 put(k, countsObj.optInt(k, 0))
             }
         }
 
-        val lastCode: String? =
-            if (d.has("lastCode") && !d.isNull("lastCode")) d.getString("lastCode") else null
-
-        val lastTs: Long? =
-            if (d.has("lastTsMs") && !d.isNull("lastTsMs")) d.getLong("lastTsMs") else null
+        val lastCode = if (d.has("lastCode") && !d.isNull("lastCode")) d.getString("lastCode") else null
+        val lastTs = if (d.has("lastTsMs") && !d.isNull("lastTsMs")) d.getLong("lastTsMs") else null
 
         return DayState(counts = counts, lastCode = lastCode, lastTsMs = lastTs)
     }
@@ -63,73 +69,83 @@ class ScanStore(private val context: Context) {
         val d = JSONObject()
 
         val countsObj = JSONObject()
-        state.counts.forEach { (code, qty) -> countsObj.put(code, qty) }
+        state.counts.forEach { (k, v) -> countsObj.put(k, v) }
         d.put("counts", countsObj)
 
-        state.lastCode?.let { d.put("lastCode", it) }
-        state.lastTsMs?.let { d.put("lastTsMs", it) }
+        if (state.lastCode != null) d.put("lastCode", state.lastCode) else d.put("lastCode", JSONObject.NULL)
+        if (state.lastTsMs != null) d.put("lastTsMs", state.lastTsMs) else d.put("lastTsMs", JSONObject.NULL)
 
         root.put(day, d)
     }
+
+    private fun normalize(code: String): String = code.trim().uppercase()
+
+    /* ---------------- flows ---------------- */
 
     val todayCounts: Flow<Map<String, Int>> =
         dayCounts(todayKey())
 
     fun dayCounts(day: String): Flow<Map<String, Int>> =
-        context.dataStore.data.map { prefs ->
-            val root = parseAll(prefs[Keys.JSON].orEmpty())
+        ds.data.map { prefs ->
+            val root = parseRoot(prefs[Keys.DAYS_JSON].orEmpty())
             readDay(root, day).counts
         }
 
     val days: Flow<List<String>> =
-        context.dataStore.data.map { prefs ->
-            val root = parseAll(prefs[Keys.JSON].orEmpty())
-            val list = mutableListOf<String>()
+        ds.data.map { prefs ->
+            val root = parseRoot(prefs[Keys.DAYS_JSON].orEmpty())
+            val out = mutableListOf<String>()
             val it = root.keys()
-            while (it.hasNext()) list.add(it.next())
-            list.sortedDescending()
+            while (it.hasNext()) out.add(it.next())
+            out.sortedDescending()
         }
 
+    /* ---------------- duplicate settings ---------------- */
+
     val duplicateGuardEnabled: Flow<Boolean> =
-        context.dataStore.data.map { prefs ->
-            (prefs[Keys.DUP_GUARD]?.toBooleanStrictOrNull()) ?: defaultDupGuardEnabled
+        ds.data.map { prefs ->
+            prefs[Keys.DUP_ENABLED]?.toBooleanStrictOrNull() ?: defaultDupEnabled
         }
 
     val duplicateWindowMs: Flow<Long> =
-        context.dataStore.data.map { prefs ->
+        ds.data.map { prefs ->
             prefs[Keys.DUP_WINDOW_MS] ?: defaultDupWindowMs
         }
 
     suspend fun setDuplicateGuardEnabled(enabled: Boolean) {
-        context.dataStore.edit { it[Keys.DUP_GUARD] = enabled.toString() }
+        ds.edit { it[Keys.DUP_ENABLED] = enabled.toString() }
     }
 
     suspend fun setDuplicateWindowMs(ms: Long) {
-        context.dataStore.edit { it[Keys.DUP_WINDOW_MS] = ms }
+        ds.edit { it[Keys.DUP_WINDOW_MS] = ms }
     }
 
-    suspend fun recordScan(codeRaw: String, nowMs: Long = System.currentTimeMillis()) {
-        val code = normalize(codeRaw)
-        if (code.isBlank()) return
+    /* ---------------- core actions ---------------- */
 
-        context.dataStore.edit { prefs ->
-            val root = parseAll(prefs[Keys.JSON].orEmpty())
+    /**
+     * @return true if scan was recorded, false if ignored (duplicate within window)
+     */
+    suspend fun recordScan(codeRaw: String, nowMs: Long = System.currentTimeMillis()): Boolean {
+        val code = normalize(codeRaw)
+        if (code.isBlank()) return false
+
+        var recorded = false
+
+        ds.edit { prefs ->
+            val root = parseRoot(prefs[Keys.DAYS_JSON].orEmpty())
             val day = todayKey()
             val current = readDay(root, day)
 
-            val dupEnabled =
-                (prefs[Keys.DUP_GUARD]?.toBooleanStrictOrNull()) ?: defaultDupGuardEnabled
-            val dupWindow =
-                prefs[Keys.DUP_WINDOW_MS] ?: defaultDupWindowMs
+            val dupEnabled = prefs[Keys.DUP_ENABLED]?.toBooleanStrictOrNull() ?: defaultDupEnabled
+            val dupWindow = prefs[Keys.DUP_WINDOW_MS] ?: defaultDupWindowMs
 
-            val isDupe =
+            val isDuplicate =
                 dupEnabled &&
-                        current.lastCode != null &&
-                        current.lastTsMs != null &&
                         current.lastCode == code &&
+                        current.lastTsMs != null &&
                         (nowMs - current.lastTsMs) < dupWindow
 
-            if (!isDupe) {
+            if (!isDuplicate) {
                 val newCounts = current.counts.toMutableMap()
                 newCounts[code] = (newCounts[code] ?: 0) + 1
 
@@ -140,14 +156,17 @@ class ScanStore(private val context: Context) {
                 )
 
                 writeDay(root, day, next)
-                prefs[Keys.JSON] = root.toString()
+                prefs[Keys.DAYS_JSON] = root.toString()
+                recorded = true
             }
         }
+
+        return recorded
     }
 
     suspend fun undoLast(nowMs: Long = System.currentTimeMillis()) {
-        context.dataStore.edit { prefs ->
-            val root = parseAll(prefs[Keys.JSON].orEmpty())
+        ds.edit { prefs ->
+            val root = parseRoot(prefs[Keys.DAYS_JSON].orEmpty())
             val day = todayKey()
             val current = readDay(root, day)
             val code = current.lastCode ?: return@edit
@@ -165,51 +184,18 @@ class ScanStore(private val context: Context) {
             )
 
             writeDay(root, day, next)
-            prefs[Keys.JSON] = root.toString()
-        }
-    }
-// --- NEW: edit/delete support (per-day) ---
-
-    suspend fun deleteDay(day: String) {
-        context.dataStore.edit { prefs ->
-            val root = parseAll(prefs[Keys.JSON].orEmpty())
-            if (root.has(day)) {
-                root.remove(day)
-                prefs[Keys.JSON] = root.toString()
-            }
+            prefs[Keys.DAYS_JSON] = root.toString()
         }
     }
 
-    suspend fun setCodeCount(day: String, codeRaw: String, qty: Int) {
-        val code = normalize(codeRaw)
-        if (code.isBlank()) return
-
-        val newQty = qty.coerceAtLeast(0)
-
-        context.dataStore.edit { prefs ->
-            val root = parseAll(prefs[Keys.JSON].orEmpty())
-            val current = readDay(root, day)
-
-            val newCounts = current.counts.toMutableMap()
-            if (newQty == 0) newCounts.remove(code) else newCounts[code] = newQty
-
-            // If we removed the lastCode, clear it so Undo doesn't act on a removed code.
-            val next = current.copy(
-                counts = newCounts,
-                lastCode = if (current.lastCode == code && newQty == 0) null else current.lastCode
-            )
-
-            writeDay(root, day, next)
-            prefs[Keys.JSON] = root.toString()
-        }
-    }
+    /* ---------------- day edit ---------------- */
 
     suspend fun incrementCode(day: String, codeRaw: String, delta: Int) {
         val code = normalize(codeRaw)
         if (code.isBlank()) return
 
-        context.dataStore.edit { prefs ->
-            val root = parseAll(prefs[Keys.JSON].orEmpty())
+        ds.edit { prefs ->
+            val root = parseRoot(prefs[Keys.DAYS_JSON].orEmpty())
             val current = readDay(root, day)
 
             val oldQty = current.counts[code] ?: 0
@@ -224,15 +210,22 @@ class ScanStore(private val context: Context) {
             )
 
             writeDay(root, day, next)
-            prefs[Keys.JSON] = root.toString()
+            prefs[Keys.DAYS_JSON] = root.toString()
         }
     }
 
     suspend fun deleteCode(day: String, codeRaw: String) {
-        setCodeCount(day, codeRaw, 0)
+        // set to zero by applying a large negative delta
+        incrementCode(day, codeRaw, -1_000_000)
     }
-    companion object {
-        fun normalize(s: String): String =
-            s.trim().uppercase()
+
+    suspend fun deleteDay(day: String) {
+        ds.edit { prefs ->
+            val root = parseRoot(prefs[Keys.DAYS_JSON].orEmpty())
+            if (root.has(day)) {
+                root.remove(day)
+                prefs[Keys.DAYS_JSON] = root.toString()
+            }
+        }
     }
 }

@@ -1,48 +1,53 @@
 <resources>
+
     <!-- Tabs -->
-    <string name="tab_scan">扫描</string>
-    <string name="tab_counts">统计</string>
-    <string name="tab_history">历史</string>
-    <string name="tab_settings">设置</string>
+    <string name="tab_scan">Scan</string>
+    <string name="tab_counts">Counts</string>
+    <string name="tab_history">History</string>
+    <string name="tab_settings">Settings</string>
 
-    <!-- Common labels -->
-    <string name="today">今天：%1$s</string>
-    <string name="total">合计：%1$d</string>
-    <string name="back">返回</string>
-    <string name="undo">撤销</string>
-    <string name="cancel">取消</string>
-    <string name="delete">删除</string>
-
-    <!-- Empty states -->
-    <string name="no_scans_yet">暂无扫描记录。</string>
-    <string name="no_history_yet">暂无历史记录。</string>
-    <string name="no_scans_for_day">该日期暂无扫描记录。</string>
-    <string name="no_data">暂无数据。</string>
+    <!-- Common -->
+    <string name="today">Today: %1$s</string>
+    <string name="total">Total: %1$d</string>
+    <string name="back">Back</string>
+    <string name="undo">Undo</string>
+    <string name="cancel">Cancel</string>
+    <string name="delete">Delete</string>
 
     <!-- Scan screen -->
-    <string name="scanner_mode_broadcast">扫描模式：广播</string>
-    <string name="undo_confirm_title">撤销上一次扫描？</string>
-    <string name="undo_confirm_text">将从最近一次扫描的条码数量中减 1。</string>
+    <string name="no_scans_yet">No scans yet.</string>
+    <string name="scanner_mode_broadcast">Scanner mode: Broadcast</string>
+    <string name="undo_confirm_title">Undo last scan?</string>
+    <string name="undo_confirm_text">This will subtract 1 from the most recent scan.</string>
+    <string name="scan_not_logged">Scan not logged (open Scan tab).</string>
 
-    <!-- History screen -->
+    <!-- History -->
+    <string name="history_title">History</string>
+    <string name="history_empty">No history yet.</string>
+    <string name="no_history_yet">No history yet.</string>
     <string name="history_open">&gt;</string>
 
-    <!-- Day detail screen -->
-    <string name="count_label">数量：%1$d</string>
-    <string name="delete_code_title">删除条码？</string>
-    <string name="delete_code_text">从 %2$s 中移除 %1$s？</string>
+    <!-- Day detail -->
+    <string name="day_total">Total: %1$d</string>
+    <string name="count_label">Count: %1$d</string>
+    <string name="no_scans_for_day">No scans for this day.</string>
+    <string name="delete_code_title">Delete code?</string>
+    <string name="delete_code_text">Remove %1$s from %2$s?</string>
 
     <!-- Counts screen -->
-    <string name="counts_today_title">今日统计</string>
-    <string name="search_code_label">搜索条码</string>
-    <string name="code_header">条码</string>
-    <string name="count_header">数量</string>
+    <string name="counts_today_title">Counts (Today)</string>
+    <string name="search_code_label">Search code</string>
+    <string name="code_header">Code</string>
+    <string name="count_header">Count</string>
+    <string name="no_data">No data.</string>
 
-    <!-- Settings screen -->
+    <!-- Settings -->
     <string name="settings_title">Settings</string>
-    <string name="settings_dup_guard">Duplicate guard</string>
+    <string name="settings_dup_guard">Duplicate scan guard</string>
     <string name="settings_dup_window_seconds">Duplicate window (seconds)</string>
-    <string name="settings_dup_window_hint">Scans of the same code inside this window will be ignored.</string>
+    <string name="settings_dup_window_hint">
+        Scans of the same code inside this window will be ignored.
+    </string>
     <string name="settings_apply">Apply</string>
 
 </resources>

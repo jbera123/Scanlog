@@ -8,9 +8,11 @@ import androidx.compose.material3.NavigationBarItem
 import androidx.compose.material3.Scaffold
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.res.stringResource
+import androidx.lifecycle.viewmodel.compose.viewModel
 import androidx.navigation.NavDestination.Companion.hierarchy
 import androidx.navigation.NavGraph.Companion.findStartDestination
 import androidx.navigation.NavType
@@ -24,8 +26,9 @@ import com.example.scanlog.ui.screens.DayDetailScreen
 import com.example.scanlog.ui.screens.HistoryScreen
 import com.example.scanlog.ui.screens.ScanScreen
 import com.example.scanlog.ui.screens.SettingsScreen
+import com.example.scanlog.ui.viewmodel.ScanViewModel
 
-private sealed class Tab(val route: String, @param:StringRes val labelRes: Int) {
+private sealed class Tab(val route: String, @StringRes val labelRes: Int) {
     data object Scan : Tab("scan", R.string.tab_scan)
     data object Counts : Tab("counts", R.string.tab_counts)
     data object History : Tab("history", R.string.tab_history)
@@ -35,10 +38,19 @@ private sealed class Tab(val route: String, @param:StringRes val labelRes: Int) 
 @Composable
 fun AppNav() {
     val navController = rememberNavController()
+
+    // One shared ScanViewModel for entire app
+    val scanVM: ScanViewModel = viewModel()
+
     val tabs = listOf(Tab.Scan, Tab.Counts, Tab.History, Tab.Settings)
 
     val navBackStackEntry by navController.currentBackStackEntryAsState()
     val currentDestination = navBackStackEntry?.destination
+
+    // Enable scanning ONLY when Scan tab is visible
+    LaunchedEffect(currentDestination?.route) {
+        scanVM.setScanEnabled(currentDestination?.route == Tab.Scan.route)
+    }
 
     Scaffold(
         bottomBar = {
@@ -61,34 +73,38 @@ fun AppNav() {
                             }
                         },
                         label = { Text(stringResource(tab.labelRes)) },
-                        icon = { /* optional */ }
+                        icon = {}
                     )
                 }
             }
         }
-    ) { scaffoldPadding ->
-        Box(Modifier.padding(scaffoldPadding)) {
+    ) { padding ->
+        Box(Modifier.padding(padding)) {
             NavHost(
                 navController = navController,
                 startDestination = Tab.Scan.route
             ) {
                 composable(Tab.Scan.route) {
-                    ScanScreen()
+                    ScanScreen(vm = scanVM)
                 }
-
-                composable(Tab.Counts.route) { CountsScreen() }
+                composable(Tab.Counts.route) {
+                    CountsScreen()
+                }
                 composable(Tab.History.route) {
                     HistoryScreen(
-                        onOpenDay = { day -> navController.navigate("day/$day") }
+                        onOpenDay = { day ->
+                            navController.navigate("day/$day")
+                        }
                     )
                 }
-                composable(Tab.Settings.route) { SettingsScreen() }
-
+                composable(Tab.Settings.route) {
+                    SettingsScreen()
+                }
                 composable(
                     route = "day/{day}",
                     arguments = listOf(navArgument("day") { type = NavType.StringType })
-                ) { backStackEntry ->
-                    val day = backStackEntry.arguments?.getString("day") ?: return@composable
+                ) { entry ->
+                    val day = entry.arguments?.getString("day") ?: return@composable
                     DayDetailScreen(
                         day = day,
                         onBack = { navController.popBackStack() }
