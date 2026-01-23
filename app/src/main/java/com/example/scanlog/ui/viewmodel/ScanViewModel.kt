@@ -3,8 +3,10 @@ package com.example.scanlog.ui.viewmodel
 import android.app.Application
 import androidx.lifecycle.AndroidViewModel
 import androidx.lifecycle.viewModelScope
+import com.example.scanlog.R
 import com.example.scanlog.data.ScanEvent
 import com.example.scanlog.data.ScanStore
+import com.example.scanlog.util.SimpleBeep
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.SharingStarted
 import kotlinx.coroutines.flow.StateFlow
@@ -15,6 +17,9 @@ import kotlinx.coroutines.launch
 class ScanViewModel(app: Application) : AndroidViewModel(app) {
 
     private val store = ScanStore(app.applicationContext)
+    private val beep = SimpleBeep(app.applicationContext, R.raw.beep)
+
+
 
     // Gate: only record scans when Scan tab is active
     private val _scanEnabled = MutableStateFlow(true)
@@ -28,31 +33,24 @@ class ScanViewModel(app: Application) : AndroidViewModel(app) {
     val todayCounts: StateFlow<Map<String, Int>> =
         store.todayCounts.stateIn(viewModelScope, SharingStarted.Eagerly, emptyMap())
 
-    // Recent scan events shown in ScanScreen (most recent first).
+    // Recent scan events (in-memory)
     private val _recentEvents = MutableStateFlow<List<ScanEvent>>(emptyList())
     val recentEvents: StateFlow<List<ScanEvent>> = _recentEvents.asStateFlow()
 
-    /**
-     * Record a scan if scanEnabled.
-     * onResult(true)  => recorded
-     * onResult(false) => ignored (dupe) OR blocked (not on scan tab)
-     */
+    fun playBeep(volume: Float = 1.0f, rate: Float = 1.15f) {
+        beep.play(volume = volume, rate = rate)
+    }
+
     fun record(codeRaw: String, onResult: (Boolean) -> Unit = {}) {
         val code = codeRaw.trim()
-        if (code.isEmpty()) {
-            onResult(false)
-            return
-        }
-
-        // If user scans outside Scan tab, do not record
-        if (!_scanEnabled.value) {
+        if (code.isEmpty() || !_scanEnabled.value) {
             onResult(false)
             return
         }
 
         viewModelScope.launch {
             val now = System.currentTimeMillis()
-            val countAfter = store.recordScan(code, now) // Int? (null = ignored)
+            val countAfter = store.recordScan(code, now)
 
             if (countAfter == null) {
                 onResult(false)
@@ -73,7 +71,11 @@ class ScanViewModel(app: Application) : AndroidViewModel(app) {
     fun undo() {
         viewModelScope.launch {
             store.undoLast()
-            // Optional: if you want the recent list to reflect undo, tell me your preferred behavior.
         }
+    }
+
+    override fun onCleared() {
+        super.onCleared()
+        beep.release()
     }
 }

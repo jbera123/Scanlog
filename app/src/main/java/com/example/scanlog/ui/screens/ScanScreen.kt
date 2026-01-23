@@ -7,6 +7,8 @@ import android.content.IntentFilter
 import android.os.Build
 import android.os.Handler
 import android.os.Looper
+import android.os.VibrationEffect
+import android.os.Vibrator
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.layout.Arrangement
@@ -48,9 +50,10 @@ import com.example.scanlog.R
 import com.example.scanlog.data.BarcodeCatalog
 import com.example.scanlog.ui.viewmodel.ScanViewModel
 import com.example.scanlog.util.ScannerConstants
-import com.example.scanlog.util.SimpleBeep
 import kotlinx.coroutines.delay
 import java.time.LocalDate
+
+
 
 @Composable
 fun ScanScreen(
@@ -69,33 +72,52 @@ fun ScanScreen(
     var showUndoConfirm by remember { mutableStateOf(false) }
     val snackbarHostState = remember { SnackbarHostState() }
 
-    // Flash triggers
     var flashOn by remember { mutableStateOf(false) }
     var flashToken by remember { mutableIntStateOf(0) }
-
-    // Fail triggers
     var failToken by remember { mutableIntStateOf(0) }
-
-    val mainHandler = remember { Handler(Looper.getMainLooper()) }
-
-    // IMPORTANT: your SimpleBeep requires context (per your compiler error)
-    val beep = remember(appContext) { SimpleBeep(appContext) }
 
     fun triggerFail() { failToken++ }
     fun triggerSuccess() { flashToken++ }
 
+    // Main thread handler (safe for BroadcastReceiver callback)
+    val mainHandler = remember { Handler(Looper.getMainLooper()) }
+
+    fun doublePulseVibrate() {
+        val vibrator = runCatching {
+            @Suppress("DEPRECATION")
+            appContext.getSystemService(Context.VIBRATOR_SERVICE) as Vibrator
+        }.getOrNull() ?: return
+
+        if (!vibrator.hasVibrator()) return
+
+        if (Build.VERSION.SDK_INT >= 26) {
+            val timings = longArrayOf(0L, 70L, 40L, 150L)
+            val amplitudes = intArrayOf(0, 255, 0, 255)
+            vibrator.vibrate(VibrationEffect.createWaveform(timings, amplitudes, -1))
+        } else {
+            @Suppress("DEPRECATION")
+            vibrator.vibrate(longArrayOf(0, 70, 40, 150), -1)
+        }
+    }
+
+
+
+
+    // Flash runner
     LaunchedEffect(flashToken) {
         if (flashToken == 0) return@LaunchedEffect
         flashOn = true
-        delay(140)
+        delay(250)
         flashOn = false
     }
 
+    // Snackbar runner
     LaunchedEffect(failToken) {
         if (failToken == 0) return@LaunchedEffect
         snackbarHostState.showSnackbar(message = context.getString(R.string.scan_not_logged))
     }
 
+    // Register scanner receiver while this screen is in composition
     DisposableEffect(appContext) {
         val receiver = object : BroadcastReceiver() {
             override fun onReceive(ctx: Context?, intent: Intent?) {
@@ -105,9 +127,11 @@ fun ScanScreen(
                 if (code.isEmpty()) return
 
                 vm.record(code) { ok ->
+                    // Ensure UI + vibration runs on main thread
                     mainHandler.post {
                         if (ok) {
-                            beep.play()
+                            vm.playBeep(volume = 1.0f, rate = 1.15f)
+                            doublePulseVibrate()
                             triggerSuccess()
                         } else {
                             triggerFail()
@@ -118,7 +142,6 @@ fun ScanScreen(
         }
 
         val filter = IntentFilter(ScannerConstants.ACTION_DECODE)
-
         if (Build.VERSION.SDK_INT >= 33) {
             appContext.registerReceiver(receiver, filter, Context.RECEIVER_NOT_EXPORTED)
         } else {
@@ -172,7 +195,6 @@ fun ScanScreen(
                                 .padding(vertical = 6.dp),
                             horizontalArrangement = Arrangement.SpaceBetween
                         ) {
-                            // No weight() -> no internal weight error
                             Text(
                                 text = catalog.displayText(e.code),
                                 style = MaterialTheme.typography.bodyLarge,
@@ -201,7 +223,7 @@ fun ScanScreen(
                 }
             }
 
-            // BIG full-screen flash
+            // BIG full-screen flash overlay
             if (flashOn) {
                 Box(
                     modifier = Modifier
