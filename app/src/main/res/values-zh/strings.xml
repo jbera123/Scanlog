@@ -50,4 +50,12 @@
     </string>
     <string name="settings_apply">应用</string>
 
+    <string name="sort_most">按数量</string>
+    <string name="sort_alpha">按字母</string>
+    <string name="export_csv">导出 CSV</string>
+    <string name="delete_day">删除当天</string>
+    <string name="delete_day_title">删除当天？</string>
+    <string name="delete_day_text">要删除 %1$s 的全部记录吗？</string>
+
+
 </resources>

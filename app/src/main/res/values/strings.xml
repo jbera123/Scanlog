@@ -50,4 +50,12 @@
     </string>
     <string name="settings_apply">Apply</string>
 
+    <string name="sort_most">Most</string>
+    <string name="sort_alpha">Alpha</string>
+    <string name="export_csv">Export CSV</string>
+    <string name="delete_day">Delete day</string>
+    <string name="delete_day_title">Delete day?</string>
+    <string name="delete_day_text">Delete all scans for %1$s?</string>
+
+
 </resources>

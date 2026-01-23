@@ -1,11 +1,9 @@
 package com.example.scanlog.ui.screens
 
-import androidx.compose.material.icons.Icons
-import androidx.compose.material.icons.filled.MoreVert
-import androidx.compose.material3.DropdownMenu
-import androidx.compose.material3.DropdownMenuItem
-import androidx.compose.material3.Icon
-import androidx.compose.material3.IconButton
+import android.content.ContentValues
+import android.content.Context
+import android.os.Environment
+import android.provider.MediaStore
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
@@ -16,11 +14,15 @@ import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
+import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.filled.MoreVert
 import androidx.compose.material3.AlertDialog
-import androidx.compose.material3.Button
+import androidx.compose.material3.DropdownMenu
+import androidx.compose.material3.DropdownMenuItem
 import androidx.compose.material3.HorizontalDivider
+import androidx.compose.material3.Icon
+import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
-import androidx.compose.material3.OutlinedButton
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
@@ -38,6 +40,7 @@ import androidx.lifecycle.viewmodel.compose.viewModel
 import com.example.scanlog.R
 import com.example.scanlog.data.BarcodeCatalog
 import com.example.scanlog.ui.viewmodel.DayViewModel
+import java.io.OutputStream
 
 @Composable
 fun DayDetailScreen(
@@ -45,17 +48,19 @@ fun DayDetailScreen(
     onBack: () -> Unit,
     vm: DayViewModel = viewModel()
 ) {
-    val appContext = LocalContext.current.applicationContext
+    val context = LocalContext.current
+    val appContext = context.applicationContext
     val catalog = remember(appContext) { BarcodeCatalog(appContext) }
 
-    val counts by vm.counts(day).collectAsState(initial = emptyMap())
+    val sorted by vm.sortedCounts(day).collectAsState(initial = emptyList())
+    val total by vm.total(day).collectAsState(initial = 0)
+
     var confirmDeleteCode by remember { mutableStateOf<String?>(null) }
 
-    val sorted = remember(counts) {
-        counts.toList()
-            .sortedWith(compareByDescending<Pair<String, Int>> { it.second }.thenBy { it.first })
-    }
-    val total = remember(sorted) { sorted.sumOf { it.second } }
+    var pageMenuExpanded by remember { mutableStateOf(false) }
+    val sortMode by vm.sort.collectAsState()
+
+    var confirmDeleteDay by remember { mutableStateOf(false) }
 
     Column(
         modifier = Modifier
@@ -67,14 +72,66 @@ fun DayDetailScreen(
             horizontalArrangement = Arrangement.SpaceBetween
         ) {
             Column {
-                // Day string stays raw (ISO date)
                 Text(day, style = MaterialTheme.typography.titleLarge)
                 Text(
                     text = stringResource(R.string.total, total),
                     style = MaterialTheme.typography.bodyLarge
                 )
             }
-            TextButton(onClick = onBack) { Text(stringResource(R.string.back)) }
+
+            Row {
+                IconButton(onClick = { pageMenuExpanded = true }) {
+                    Icon(Icons.Filled.MoreVert, contentDescription = "Menu")
+                }
+
+                DropdownMenu(
+                    expanded = pageMenuExpanded,
+                    onDismissRequest = { pageMenuExpanded = false }
+                ) {
+                    DropdownMenuItem(
+                        text = { Text(stringResource(R.string.sort_most)) },
+                        onClick = {
+                            pageMenuExpanded = false
+                            vm.setSort(DayViewModel.DaySort.MOST)
+                        },
+                        enabled = sortMode != DayViewModel.DaySort.MOST
+                    )
+
+                    DropdownMenuItem(
+                        text = { Text(stringResource(R.string.sort_alpha)) },
+                        onClick = {
+                            pageMenuExpanded = false
+                            vm.setSort(DayViewModel.DaySort.ALPHA)
+                        },
+                        enabled = sortMode != DayViewModel.DaySort.ALPHA
+                    )
+
+                    HorizontalDivider()
+
+                    DropdownMenuItem(
+                        text = { Text(stringResource(R.string.export_csv)) },
+                        enabled = sorted.isNotEmpty(),
+                        onClick = {
+                            pageMenuExpanded = false
+                            exportDayCsvToDownloads(
+                                context = context,
+                                day = day,
+                                rows = sorted
+                            )
+                        }
+                    )
+
+                    DropdownMenuItem(
+                        text = { Text(stringResource(R.string.delete_day)) },
+                        onClick = {
+                            pageMenuExpanded = false
+                            confirmDeleteDay = true
+                        }
+                    )
+                }
+
+                TextButton(onClick = onBack) { Text(stringResource(R.string.back)) }
+            }
         }
 
         Spacer(Modifier.height(12.dp))
@@ -96,7 +153,6 @@ fun DayDetailScreen(
                             .padding(vertical = 6.dp),
                         horizontalArrangement = Arrangement.SpaceBetween
                     ) {
-                        // Left side: code + chinese name (if exists)
                         Column(modifier = Modifier.weight(1f)) {
                             Text(
                                 text = catalog.displayText(code),
@@ -110,21 +166,20 @@ fun DayDetailScreen(
                             )
                         }
 
-                        // Right side: actions (no Icons -> no "Remove" error)
-                        var menuExpanded by remember(code) { mutableStateOf(false) }
+                        var rowMenuExpanded by remember(code) { mutableStateOf(false) }
 
-                        IconButton(onClick = { menuExpanded = true }) {
+                        IconButton(onClick = { rowMenuExpanded = true }) {
                             Icon(Icons.Filled.MoreVert, contentDescription = "More")
                         }
 
                         DropdownMenu(
-                            expanded = menuExpanded,
-                            onDismissRequest = { menuExpanded = false }
+                            expanded = rowMenuExpanded,
+                            onDismissRequest = { rowMenuExpanded = false }
                         ) {
                             DropdownMenuItem(
                                 text = { Text("+1") },
                                 onClick = {
-                                    menuExpanded = false
+                                    rowMenuExpanded = false
                                     vm.increment(day, code, +1)
                                 }
                             )
@@ -132,19 +187,18 @@ fun DayDetailScreen(
                                 text = { Text("-1") },
                                 enabled = count > 0,
                                 onClick = {
-                                    menuExpanded = false
+                                    rowMenuExpanded = false
                                     vm.increment(day, code, -1)
                                 }
                             )
                             DropdownMenuItem(
                                 text = { Text(stringResource(R.string.delete)) },
                                 onClick = {
-                                    menuExpanded = false
+                                    rowMenuExpanded = false
                                     confirmDeleteCode = code
                                 }
                             )
                         }
-
                     }
                     HorizontalDivider()
                 }
@@ -157,10 +211,7 @@ fun DayDetailScreen(
         AlertDialog(
             onDismissRequest = { confirmDeleteCode = null },
             title = { Text(stringResource(R.string.delete_code_title)) },
-            text = {
-                // Keep raw code/day in message; localized shell text
-                Text(stringResource(R.string.delete_code_text, codeToDelete, day))
-            },
+            text = { Text(stringResource(R.string.delete_code_text, codeToDelete, day)) },
             confirmButton = {
                 TextButton(
                     onClick = {
@@ -175,5 +226,55 @@ fun DayDetailScreen(
                 }
             }
         )
+    }
+
+    if (confirmDeleteDay) {
+        AlertDialog(
+            onDismissRequest = { confirmDeleteDay = false },
+            title = { Text(stringResource(R.string.delete_day_title)) },
+            text = { Text(stringResource(R.string.delete_day_text, day)) },
+            confirmButton = {
+                TextButton(
+                    onClick = {
+                        vm.deleteDay(day)
+                        confirmDeleteDay = false
+                        onBack()
+                    }
+                ) { Text(stringResource(R.string.delete)) }
+            },
+            dismissButton = {
+                TextButton(onClick = { confirmDeleteDay = false }) {
+                    Text(stringResource(R.string.cancel))
+                }
+            }
+        )
+    }
+}
+
+fun exportDayCsvToDownloads(
+    context: Context,
+    day: String,
+    rows: List<Pair<String, Int>>
+) {
+    val fileName = "ScanLog_$day.csv"
+
+    val resolver = context.contentResolver
+    val values = ContentValues().apply {
+        put(MediaStore.Downloads.DISPLAY_NAME, fileName)
+        put(MediaStore.Downloads.MIME_TYPE, "text/csv")
+        put(MediaStore.Downloads.RELATIVE_PATH, Environment.DIRECTORY_DOWNLOADS)
+    }
+
+    val uri = resolver.insert(MediaStore.Downloads.EXTERNAL_CONTENT_URI, values) ?: return
+
+    resolver.openOutputStream(uri)?.use { out ->
+        writeCsv(out, rows)
+    }
+}
+
+private fun writeCsv(out: OutputStream, rows: List<Pair<String, Int>>) {
+    out.write("Code,Count\n".toByteArray())
+    rows.forEach { (code, count) ->
+        out.write("$code,$count\n".toByteArray())
     }
 }
