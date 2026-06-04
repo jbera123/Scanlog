@@ -3,6 +3,7 @@
     <uses-permission android:name="android.permission.VIBRATE" />
 
     <application
+        android:name=".ScanlogApp"
         android:allowBackup="true"
         android:label="Scan Log"
         android:supportsRtl="true">

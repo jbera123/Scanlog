@@ -22,6 +22,8 @@ import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.width
 import androidx.compose.material3.AlertDialog
+import androidx.compose.material3.AssistChip
+import androidx.compose.material3.AssistChipDefaults
 import androidx.compose.material3.Button
 import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.MaterialTheme
@@ -48,7 +50,11 @@ import androidx.compose.ui.unit.dp
 import androidx.lifecycle.viewmodel.compose.viewModel
 import com.example.scanlog.R
 import com.example.scanlog.data.BarcodeCatalog
+import com.example.scanlog.data.RfidBarcodeCatalog
+import com.example.scanlog.data.ScanMode
+import com.example.scanlog.rfid.RfidController
 import com.example.scanlog.ui.viewmodel.ScanViewModel
+import com.example.scanlog.ui.viewmodel.SettingsViewModel
 import com.example.scanlog.util.ScannerConstants
 import kotlinx.coroutines.delay
 import java.time.LocalDate
@@ -57,11 +63,17 @@ import java.time.LocalDate
 
 @Composable
 fun ScanScreen(
-    vm: ScanViewModel = viewModel()
+    vm: ScanViewModel = viewModel(),
+    settingsVm: SettingsViewModel = viewModel()
 ) {
     val context = LocalContext.current
     val appContext = context.applicationContext
     val catalog = remember(appContext) { BarcodeCatalog(appContext) }
+    val rfidCatalog = remember(appContext) { RfidBarcodeCatalog(appContext) }
+
+    val scanMode by settingsVm.scanMode.collectAsState()
+    val rfidRange by settingsVm.rfidRange.collectAsState()
+    val holdCount by RfidController.holdCount.collectAsState()
 
     val recentEvents by vm.recentEvents.collectAsState()
     val todayCounts by vm.todayCounts.collectAsState()
@@ -111,50 +123,100 @@ fun ScanScreen(
         flashOn = false
     }
 
-    // Snackbar runner
+    // Snackbar runner with rate limit. During a Strong-mode sweep multiple
+    // unknown EPCs can hit in rapid succession; without this we'd queue one
+    // toast per tag and spam the UI for many seconds.
+    var lastFailShownMs by remember { mutableStateOf(0L) }
     LaunchedEffect(failToken) {
         if (failToken == 0) return@LaunchedEffect
+        val now = System.currentTimeMillis()
+        if (now - lastFailShownMs < 3000L) return@LaunchedEffect
+        lastFailShownMs = now
         snackbarHostState.showSnackbar(message = context.getString(R.string.scan_not_logged))
     }
 
-    // Register scanner receiver while this screen is in composition
-    DisposableEffect(appContext) {
-        val receiver = object : BroadcastReceiver() {
-            override fun onReceive(ctx: Context?, intent: Intent?) {
-                if (intent?.action != ScannerConstants.ACTION_DECODE) return
-                val raw = intent.getStringExtra(ScannerConstants.EXTRA_DECODE_DATA) ?: return
-                val code = raw.trim()
-                if (code.isEmpty()) return
-
-                vm.record(code) { ok ->
-                    // Ensure UI + vibration runs on main thread
-                    mainHandler.post {
-                        if (ok) {
-                            vm.playBeep(volume = 1.0f, rate = 1.15f)
-                            doublePulseVibrate()
-                            triggerSuccess()
-                        } else {
-                            triggerFail()
-                        }
-                    }
-                }
+    fun feedback(ok: Boolean) {
+        mainHandler.post {
+            if (ok) {
+                vm.playBeep(volume = 1.0f, rate = 1.15f)
+                doublePulseVibrate()
+                triggerSuccess()
+            } else {
+                triggerFail()
             }
         }
+    }
 
-        val filter = IntentFilter(ScannerConstants.ACTION_DECODE)
-        if (Build.VERSION.SDK_INT >= 33) {
-            appContext.registerReceiver(receiver, filter, Context.RECEIVER_NOT_EXPORTED)
+    // Barcode path — raw code stored as-is (may include known SKUs from catalog).
+    fun handleScanResult(code: String) {
+        val trimmed = code.trim()
+        if (trimmed.isEmpty()) return
+        vm.record(trimmed) { ok -> feedback(ok) }
+    }
+
+    // RFID path — unique EPC rolled up under its category code. Unknown EPCs
+    // (not in rfid_barcode_map.csv) get the fail snackbar. Already-counted EPCs
+    // (in today's seenEpcs) are a silent no-op so re-sweeps don't spam toasts.
+    fun handleRfidTag(epc: String) {
+        val trimmed = epc.trim()
+        if (trimmed.isEmpty()) return
+        val entry = rfidCatalog.lookup(trimmed)
+        if (entry == null) {
+            feedback(false)
+            return
+        }
+        vm.recordRfidTag(trimmed, entry.barcode) { ok ->
+            if (ok) feedback(true)
+            // else: known tag, already counted today — silently ignore.
+        }
+    }
+
+    // Barcode receiver — only active in BARCODE_ONLY mode. In RFID+Barcode mode
+    // the Scan tab is pure RFID counting; stray barcode trigger presses are ignored
+    // so a misfire can't inflate counts with an unrelated code.
+    DisposableEffect(appContext, scanMode) {
+        if (scanMode != ScanMode.BARCODE_ONLY) {
+            onDispose { }
         } else {
-            @Suppress("DEPRECATION")
-            appContext.registerReceiver(receiver, filter)
-        }
-
-        onDispose {
-            try {
+            val receiver = object : BroadcastReceiver() {
+                override fun onReceive(ctx: Context?, intent: Intent?) {
+                    intent ?: return
+                    val raw: String = when (intent.action) {
+                        // Xcheng: single String extra.
+                        ScannerConstants.ACTION_DECODE_XCHENG ->
+                            intent.getStringExtra(ScannerConstants.EXTRA_DECODE_XCHENG)
+                        // 条捷印 T02: byte[] payload + explicit length (extra null bytes
+                        // past `length` if we don't trim).
+                        ScannerConstants.ACTION_DECODE_BLD -> {
+                            val bytes = intent.getByteArrayExtra(ScannerConstants.EXTRA_DECODE_BLD_BYTES)
+                            val len = intent.getIntExtra(ScannerConstants.EXTRA_DECODE_BLD_LEN, bytes?.size ?: 0)
+                            if (bytes == null || len <= 0) null
+                            else String(bytes, 0, len.coerceAtMost(bytes.size))
+                        }
+                        else -> null
+                    } ?: return
+                    handleScanResult(raw)
+                }
+            }
+            val filter = IntentFilter().apply {
+                ScannerConstants.ALL_DECODE_ACTIONS.forEach { addAction(it) }
+            }
+            if (Build.VERSION.SDK_INT >= 33) {
+                appContext.registerReceiver(receiver, filter, Context.RECEIVER_NOT_EXPORTED)
+            } else {
                 @Suppress("DEPRECATION")
-                appContext.unregisterReceiver(receiver)
-            } catch (_: IllegalArgumentException) { }
+                appContext.registerReceiver(receiver, filter)
+            }
+            onDispose {
+                try { appContext.unregisterReceiver(receiver) }
+                catch (_: IllegalArgumentException) { }
+            }
         }
+    }
+
+    // RFID tags — come from the GClient SDK, not broadcasts. Rolled up by category.
+    LaunchedEffect(Unit) {
+        RfidController.tagFlow.collect { epc -> handleRfidTag(epc) }
     }
 
     Scaffold(
@@ -179,6 +241,37 @@ fun ScanScreen(
                         text = stringResource(R.string.total, total),
                         style = MaterialTheme.typography.titleMedium
                     )
+                }
+
+                if (scanMode == ScanMode.RFID_AND_BARCODE) {
+                    Spacer(Modifier.height(8.dp))
+                    Row(
+                        Modifier.fillMaxWidth(),
+                        horizontalArrangement = Arrangement.SpaceBetween
+                    ) {
+                        // Live "+N" counter for the active trigger-hold. Hidden when 0
+                        // so it doesn't compete with the SKU rows.
+                        if (holdCount > 0) {
+                            Text(
+                                text = "+$holdCount",
+                                style = MaterialTheme.typography.titleMedium,
+                                color = Color(0xFF00C853)
+                            )
+                        } else {
+                            Spacer(Modifier.width(1.dp))
+                        }
+                        AssistChip(
+                            // Tap to cycle Weak → Medium → Strong → Weak — saves a trip
+                            // to Settings when the range needs a quick adjust mid-sweep.
+                            onClick = {
+                                val all = com.example.scanlog.data.RfidRange.entries
+                                val next = all[(rfidRange.ordinal + 1) % all.size]
+                                settingsVm.setRfidRange(next)
+                            },
+                            label = { Text(rfidRange.label) },
+                            colors = AssistChipDefaults.assistChipColors()
+                        )
+                    }
                 }
 
                 Spacer(Modifier.height(16.dp))
@@ -228,8 +321,8 @@ fun ScanScreen(
                 Box(
                     modifier = Modifier
                         .fillMaxSize()
-                        .border(12.dp, Color(0xFF00C853))
-                        .background(Color(0x2200C853))
+                        .border(20.dp, Color(0xFF00C853))
+                        .background(Color(0x4400C853))
                 )
             }
         }

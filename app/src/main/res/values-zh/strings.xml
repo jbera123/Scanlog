@@ -4,6 +4,7 @@
     <string name="tab_scan">扫描</string>
     <string name="tab_counts">统计</string>
     <string name="tab_history">历史</string>
+    <string name="tab_match">比对</string>
     <string name="tab_settings">设置</string>
 
     <!-- Common -->
@@ -49,6 +50,16 @@
         在此时间窗口内重复扫描同一条码将被忽略。
     </string>
     <string name="settings_apply">应用</string>
+    <string name="settings_rfid_range">RFID 识别距离</string>
+    <string name="settings_rfid_range_hint">弱 = 仅近距核验。中 = 兼顾遮挡 / 较远标签。强 = 盘点最大距离。</string>
+    <string name="settings_scan_mode">扫描模式</string>
+    <string name="settings_scan_mode_hint">RFID + 条码模式启用比对页。仅条码模式会隐藏该页。</string>
+
+    <!-- Match screen -->
+    <string name="match_scan_rfid">请扫描 RFID 标签</string>
+    <string name="match_scan_barcode">请扫描条码</string>
+    <string name="match_expected">预期：%1$s</string>
+    <string name="match_scanned">扫描：%1$s</string>
 
     <string name="sort_most">按数量</string>
     <string name="sort_alpha">按字母</string>

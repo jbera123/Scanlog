@@ -1,5 +1,7 @@
 package com.example.scanlog.ui.screens
 
+import androidx.compose.foundation.rememberScrollState
+import androidx.compose.foundation.verticalScroll
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
@@ -8,6 +10,7 @@ import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.padding
 import androidx.compose.material3.Button
 import androidx.compose.material3.Card
+import androidx.compose.material3.FilterChip
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.Switch
@@ -23,22 +26,56 @@ import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.unit.dp
 import androidx.lifecycle.viewmodel.compose.viewModel
 import com.example.scanlog.R
+import com.example.scanlog.data.RfidRange
+import com.example.scanlog.data.ScanMode
 import com.example.scanlog.ui.viewmodel.SettingsViewModel
 
 @Composable
 fun SettingsScreen(vm: SettingsViewModel = viewModel()) {
     val enabled by vm.dupEnabled.collectAsState()
     val windowMs by vm.dupWindowMs.collectAsState()
+    val rfidRange by vm.rfidRange.collectAsState()
+    val scanMode by vm.scanMode.collectAsState()
 
     var secondsText by remember(windowMs) { mutableStateOf((windowMs / 1000L).toString()) }
 
     Column(
         modifier = Modifier
             .fillMaxSize()
+            .verticalScroll(rememberScrollState())
             .padding(16.dp),
         verticalArrangement = Arrangement.spacedBy(16.dp)
     ) {
         Text(stringResource(R.string.settings_title), style = MaterialTheme.typography.titleLarge)
+
+        Card {
+            Column(
+                modifier = Modifier.padding(16.dp),
+                verticalArrangement = Arrangement.spacedBy(12.dp)
+            ) {
+                Text(
+                    text = stringResource(R.string.settings_scan_mode),
+                    style = MaterialTheme.typography.bodyLarge
+                )
+                Row(
+                    modifier = Modifier.fillMaxWidth(),
+                    horizontalArrangement = Arrangement.spacedBy(8.dp)
+                ) {
+                    ScanMode.entries.forEach { mode ->
+                        FilterChip(
+                            selected = scanMode == mode,
+                            onClick = { vm.setScanMode(mode) },
+                            label = { Text(mode.label) }
+                        )
+                    }
+                }
+                Text(
+                    text = stringResource(R.string.settings_scan_mode_hint),
+                    style = MaterialTheme.typography.bodySmall,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant
+                )
+            }
+        }
 
         Card {
             Column(
@@ -76,6 +113,35 @@ fun SettingsScreen(vm: SettingsViewModel = viewModel()) {
                 ) {
                     Text(stringResource(R.string.settings_apply))
                 }
+            }
+        }
+
+        Card {
+            Column(
+                modifier = Modifier.padding(16.dp),
+                verticalArrangement = Arrangement.spacedBy(12.dp)
+            ) {
+                Text(
+                    text = stringResource(R.string.settings_rfid_range),
+                    style = MaterialTheme.typography.bodyLarge
+                )
+                Row(
+                    modifier = Modifier.fillMaxWidth(),
+                    horizontalArrangement = Arrangement.spacedBy(8.dp)
+                ) {
+                    RfidRange.entries.forEach { range ->
+                        FilterChip(
+                            selected = rfidRange == range,
+                            onClick = { vm.setRfidRange(range) },
+                            label = { Text(range.label) }
+                        )
+                    }
+                }
+                Text(
+                    text = stringResource(R.string.settings_rfid_range_hint),
+                    style = MaterialTheme.typography.bodySmall,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant
+                )
             }
         }
     }
