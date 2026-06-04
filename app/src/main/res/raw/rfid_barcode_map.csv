@@ -1,0 +1,13 @@
+rfid,barcode,label
+# The rfid column is matched as a PREFIX. Put the first 5 (or however many) hex
+# chars of the EPC that uniquely identifies the tag. Longest match wins.
+# e.g. "E2003" will match any EPC starting with E2003...
+AA,SEAT4-1-A,SEAT4-1-A
+AB,SEAT4-2-A,SEAT4-2-A
+AC,L4-ARM-A,L4-ARM-A
+AD,R4-ARM-A,R4-ARM-A
+AE,SR4-ARM-A,SR4-ARM-A
+AF,C4-SEAT-1-A,C4-SEAT-1-A
+BA,C4-SEAT-2-A,C4-SEAT-2-A
+BB,C4-ARM-A,C4-ARM-A
+BC,OTTOMAN4-A,OTTOMAN4-A

@@ -4,6 +4,7 @@
     <string name="tab_scan">Scan</string>
     <string name="tab_counts">Counts</string>
     <string name="tab_history">History</string>
+    <string name="tab_match">Match</string>
     <string name="tab_settings">Settings</string>
 
     <!-- Common -->
@@ -49,6 +50,16 @@
         Scans of the same code inside this window will be ignored.
     </string>
     <string name="settings_apply">Apply</string>
+    <string name="settings_rfid_range">RFID detection range</string>
+    <string name="settings_rfid_range_hint">Weak = close-only verify. Medium = reach blocked / farther tags. Strong = max range for counting days.</string>
+    <string name="settings_scan_mode">Scan mode</string>
+    <string name="settings_scan_mode_hint">RFID + Barcode enables the Match tab for cross-reference. Barcode only hides it.</string>
+
+    <!-- Match screen -->
+    <string name="match_scan_rfid">Scan RFID tag</string>
+    <string name="match_scan_barcode">Now scan barcode</string>
+    <string name="match_expected">Expected: %1$s</string>
+    <string name="match_scanned">Scanned:  %1$s</string>
 
     <string name="sort_most">Most</string>
     <string name="sort_alpha">Alpha</string>

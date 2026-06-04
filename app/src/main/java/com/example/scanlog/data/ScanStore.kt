@@ -4,8 +4,11 @@ import android.content.Context
 import androidx.datastore.preferences.core.edit
 import androidx.datastore.preferences.core.longPreferencesKey
 import androidx.datastore.preferences.core.stringPreferencesKey
+import com.example.scanlog.data.RfidRange
+import com.example.scanlog.data.ScanMode
 import androidx.datastore.preferences.preferencesDataStore
 import kotlinx.coroutines.flow.Flow
+import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.flow.map
 import org.json.JSONArray
 import org.json.JSONObject
@@ -16,7 +19,10 @@ private val Context.dataStore by preferencesDataStore(name = "scanlog_store")
 data class DayState(
     val counts: Map<String, Int> = emptyMap(),
     val lastCode: String? = null,
-    val lastTsMs: Long? = null
+    val lastTsMs: Long? = null,
+    // Unique RFID EPCs already counted today. Used to prevent double-counting
+    // the same physical tag under its rolled-up category label.
+    val seenEpcs: Set<String> = emptySet()
 )
 
 
@@ -29,9 +35,14 @@ class ScanStore(private val context: Context) {
         // Dup settings stored here (since your app currently does it this way)
         val DUP_GUARD = stringPreferencesKey("dup_guard_enabled") // "true"/"false"
         val DUP_WINDOW_MS = longPreferencesKey("dup_window_ms")
+        val RFID_RANGE = stringPreferencesKey("rfid_range")
+        val SCAN_MODE = stringPreferencesKey("scan_mode")
 
         // NEW: recent scan events for Scan tab
         val RECENT_EVENTS_JSON = stringPreferencesKey("recent_events_json")
+
+        // Comma-separated list of days that have been auto-exported to CSV.
+        val EXPORTED_DAYS = stringPreferencesKey("exported_days")
     }
 
     // Defaults
@@ -64,7 +75,12 @@ class ScanStore(private val context: Context) {
         val lastTs: Long? =
             if (d.has("lastTsMs") && !d.isNull("lastTsMs")) d.getLong("lastTsMs") else null
 
-        return DayState(counts = counts, lastCode = lastCode, lastTsMs = lastTs)
+        val seen: Set<String> = if (d.has("seenEpcs")) {
+            val arr = d.getJSONArray("seenEpcs")
+            buildSet { for (i in 0 until arr.length()) add(arr.getString(i)) }
+        } else emptySet()
+
+        return DayState(counts = counts, lastCode = lastCode, lastTsMs = lastTs, seenEpcs = seen)
     }
 
     private fun writeDay(root: JSONObject, day: String, state: DayState) {
@@ -77,6 +93,12 @@ class ScanStore(private val context: Context) {
         state.lastCode?.let { d.put("lastCode", it) }
         state.lastTsMs?.let { d.put("lastTsMs", it) }
 
+        if (state.seenEpcs.isNotEmpty()) {
+            val arr = JSONArray()
+            state.seenEpcs.forEach { arr.put(it) }
+            d.put("seenEpcs", arr)
+        }
+
         root.put(day, d)
     }
 
@@ -84,11 +106,59 @@ class ScanStore(private val context: Context) {
 
     val todayCounts: Flow<Map<String, Int>> = dayCounts(todayKey())
 
+    /**
+     * Today's already-counted EPC set. Lets the ViewModel build an in-memory
+     * dedup cache so re-emits of an already-counted tag short-circuit before
+     * the DataStore round-trip.
+     */
+    val todaySeenEpcs: Flow<Set<String>> =
+        context.dataStore.data.map { prefs ->
+            val root = parseAll(prefs[Keys.JSON].orEmpty())
+            readDay(root, todayKey()).seenEpcs
+        }
+
     fun dayCounts(day: String): Flow<Map<String, Int>> =
         context.dataStore.data.map { prefs ->
             val root = parseAll(prefs[Keys.JSON].orEmpty())
             readDay(root, day).counts
         }
+
+    /** Snapshot of full days_json — used by the auto-exporter at app start. */
+    suspend fun snapshotAllDays(): Map<String, Map<String, Int>> {
+        val prefs = context.dataStore.data.first()
+        val root = parseAll(prefs[Keys.JSON].orEmpty())
+        val out = LinkedHashMap<String, Map<String, Int>>()
+        val it = root.keys()
+        while (it.hasNext()) {
+            val day = it.next()
+            out[day] = readDay(root, day).counts
+        }
+        return out
+    }
+
+    /** Days already auto-exported. */
+    suspend fun getExportedDays(): Set<String> {
+        val prefs = context.dataStore.data.first()
+        return prefs[Keys.EXPORTED_DAYS]
+            ?.split(',')
+            ?.filter { it.isNotBlank() }
+            ?.toSet()
+            ?: emptySet()
+    }
+
+    /** Mark a day as exported so we don't write it again on next launch. */
+    suspend fun markExported(day: String) {
+        context.dataStore.edit { prefs ->
+            val existing = prefs[Keys.EXPORTED_DAYS]
+                ?.split(',')
+                ?.filter { it.isNotBlank() }
+                ?.toMutableSet()
+                ?: mutableSetOf()
+            if (existing.add(day)) {
+                prefs[Keys.EXPORTED_DAYS] = existing.joinToString(",")
+            }
+        }
+    }
 
     val days: Flow<List<String>> =
         context.dataStore.data.map { prefs ->
@@ -117,6 +187,24 @@ class ScanStore(private val context: Context) {
 
     suspend fun setDuplicateWindowMs(ms: Long) {
         context.dataStore.edit { it[Keys.DUP_WINDOW_MS] = ms }
+    }
+
+    val rfidRange: Flow<RfidRange> =
+        context.dataStore.data.map { prefs ->
+            RfidRange.fromKey(prefs[Keys.RFID_RANGE].orEmpty())
+        }
+
+    suspend fun setRfidRange(range: RfidRange) {
+        context.dataStore.edit { it[Keys.RFID_RANGE] = range.name }
+    }
+
+    val scanMode: Flow<ScanMode> =
+        context.dataStore.data.map { prefs ->
+            ScanMode.fromKey(prefs[Keys.SCAN_MODE].orEmpty())
+        }
+
+    suspend fun setScanMode(mode: ScanMode) {
+        context.dataStore.edit { it[Keys.SCAN_MODE] = mode.name }
     }
 
     // --- NEW: Recent events for Scan tab ---
@@ -213,6 +301,56 @@ class ScanStore(private val context: Context) {
                 counts = newCounts,
                 lastCode = code,
                 lastTsMs = nowMs
+            )
+
+            writeDay(root, day, next)
+            prefs[Keys.JSON] = root.toString()
+
+            recordedCountAfter = newQty
+        }
+
+        return recordedCountAfter
+    }
+
+
+    /**
+     * Records a scanned RFID tag. Each unique EPC is counted at most ONCE per day
+     * under the rolled-up category code (e.g. "SEAT4-1-A"). If the EPC was already
+     * seen today, this is a no-op and returns null.
+     */
+    suspend fun recordRfidTag(
+        epcRaw: String,
+        rollupCodeRaw: String,
+        nowMs: Long = System.currentTimeMillis()
+    ): Int? {
+        val epc = normalize(epcRaw)
+        val rollup = normalize(rollupCodeRaw)
+        if (epc.isBlank() || rollup.isBlank()) return null
+
+        var recordedCountAfter: Int? = null
+
+        context.dataStore.edit { prefs ->
+            val root = parseAll(prefs[Keys.JSON].orEmpty())
+            val day = todayKey()
+            val current = readDay(root, day)
+
+            // Per-tag dedup: same physical EPC only counts once per day.
+            if (epc in current.seenEpcs) {
+                recordedCountAfter = null
+                return@edit
+            }
+
+            val oldQty = current.counts[rollup] ?: 0
+            val newQty = oldQty + 1
+
+            val newCounts = current.counts.toMutableMap()
+            newCounts[rollup] = newQty
+
+            val next = current.copy(
+                counts = newCounts,
+                lastCode = rollup,
+                lastTsMs = nowMs,
+                seenEpcs = current.seenEpcs + epc
             )
 
             writeDay(root, day, next)

@@ -29,11 +29,16 @@ android {
 
     packaging {
         resources.excludes.add("/META-INF/{AL2.0,LGPL2.1}")
+        jniLibs.useLegacyPackaging = true
     }
+
+    sourceSets["main"].jniLibs.srcDirs("libs")
 }
 
 dependencies {
     coreLibraryDesugaring("com.android.tools:desugar_jdk_libs:2.0.4")
+
+    implementation(fileTree("libs") { include("*.jar") })
 
     implementation(platform("androidx.compose:compose-bom:2024.06.00"))
     implementation("androidx.activity:activity-compose:1.9.0")
