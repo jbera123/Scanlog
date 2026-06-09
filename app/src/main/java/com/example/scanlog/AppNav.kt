@@ -134,7 +134,7 @@ fun AppNav() {
                     )
                 }
                 composable(Tab.Match.route) {
-                    MatchScreen()
+                    MatchScreen(settingsVm = settingsVM)
                 }
                 composable(Tab.Settings.route) {
                     SettingsScreen()

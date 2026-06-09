@@ -14,10 +14,12 @@ import androidx.compose.foundation.border
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
+import androidx.compose.material3.FilterChip
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Scaffold
 import androidx.compose.material3.SnackbarHost
@@ -40,9 +42,12 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.lifecycle.viewmodel.compose.viewModel
 import com.example.scanlog.R
+import com.example.scanlog.data.RfidRange
 import com.example.scanlog.rfid.RfidController
 import com.example.scanlog.ui.viewmodel.MatchState
 import com.example.scanlog.ui.viewmodel.MatchViewModel
+import com.example.scanlog.ui.viewmodel.SettingsViewModel
+import com.example.scanlog.util.BldScanner
 import com.example.scanlog.util.ScannerConstants
 import kotlinx.coroutines.delay
 
@@ -50,13 +55,25 @@ private val colorMatch = Color(0xFF00C853)
 private val colorMismatch = Color(0xFFD50000)
 
 @Composable
-fun MatchScreen(vm: MatchViewModel = viewModel()) {
+fun MatchScreen(
+    vm: MatchViewModel = viewModel(),
+    settingsVm: SettingsViewModel = viewModel()
+) {
     val context = LocalContext.current
     val appContext = context.applicationContext
     val state by vm.state.collectAsState()
+    val rfidRange by settingsVm.rfidRange.collectAsState()
     val snackbarMessage by vm.snackbarMessage.collectAsState()
     val snackbarHostState = remember { SnackbarHostState() }
     val mainHandler = remember { Handler(Looper.getMainLooper()) }
+
+    // Compare mode is single-fire: one barcode decode per trigger press, so each
+    // RFID tag lines up one-to-one with the barcode it's verified against. Restore
+    // continuous sweep (the Scan-tab default for RFID+Barcode) when leaving.
+    DisposableEffect(Unit) {
+        BldScanner.setContinuous(false)
+        onDispose { BldScanner.setContinuous(true) }
+    }
 
     fun doublePulseVibrate() {
         val vibrator = runCatching {
@@ -217,6 +234,23 @@ fun MatchScreen(vm: MatchViewModel = viewModel()) {
                         fontSize = 120.sp,
                         fontWeight = FontWeight.Bold,
                         color = overlayColor
+                    )
+                }
+            }
+
+            // RFID range toggle — kept on top so it stays usable during the
+            // result flash. Writes through to the reader + persisted setting.
+            Row(
+                modifier = Modifier
+                    .align(Alignment.TopCenter)
+                    .padding(8.dp),
+                horizontalArrangement = Arrangement.spacedBy(8.dp)
+            ) {
+                RfidRange.entries.forEach { range ->
+                    FilterChip(
+                        selected = rfidRange == range,
+                        onClick = { settingsVm.setRfidRange(range) },
+                        label = { Text(range.label) }
                     )
                 }
             }
