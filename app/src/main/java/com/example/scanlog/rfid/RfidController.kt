@@ -50,9 +50,26 @@ object RfidController {
     private val opened = AtomicBoolean(false)
     private val running = AtomicBoolean(false)
 
-    // Gate: if false, triggerPress() is a no-op and any active inventory is stopped.
-    // Controlled by AppNav based on (scan mode == RFID_AND_BARCODE) AND (current tab in {scan, match}).
+    // Inventory gate: if false, triggerPress() won't start a sweep and any active
+    // inventory is stopped. Set by AppNav for (mode == RFID_AND_BARCODE) AND
+    // (current tab in {scan, match}).
     private val gated = AtomicBoolean(false)
+
+    // Trigger ownership: when true the app consumes the hardware trigger key on
+    // EVERY screen (set by AppNav whenever mode == RFID_AND_BARCODE), so the
+    // system barcode scanner never fires — and beeps — off the scan workflow
+    // (e.g. while browsing the Counts tab). Inventory is still gated separately
+    // by `gated`, so owning the key off a scan screen just swallows it silently.
+    private val triggerOwned = AtomicBoolean(false)
+
+    // Hold keep-alive. A physically held trigger auto-repeats ACTION_DOWN; we
+    // refresh this timestamp on every DOWN and stop the sweep once the repeats
+    // stop arriving. This gives reliable hold-to-scan even on PDAs that never
+    // deliver a clean ACTION_UP (which otherwise left the sweep latched "on",
+    // feeling like a toggle).
+    private const val HOLD_KEEPALIVE_MS = 700L
+    @Volatile private var lastTriggerDownMs = 0L
+    private var holdJob: Job? = null
 
     // Current RSSI floor (dBm). 0 == no filter.
     @Volatile private var rssiFloorDbm: Int = -60
@@ -156,26 +173,65 @@ object RfidController {
     }
 
     /**
-     * True when RFID is active (gate open). MainActivity uses this to decide
-     * whether to consume the hardware trigger key. When false (barcode-only mode
-     * or a non-RFID screen), the trigger must pass through to the system barcode
-     * scanner service untouched.
+     * Set whether the app owns (consumes) the hardware trigger key. AppNav sets
+     * this true for the whole of RFID+Barcode mode so the barcode laser never
+     * fires off-workflow. No effect on inventory, which is gated by setGate().
      */
-    fun isGateOpen(): Boolean = gated.get()
-
-    /** Called on hardware trigger key DOWN. Starts inventory only if gate is open. */
-    fun triggerPress() {
-        if (!gated.get()) return
-        _holdCount.value = 0
-        startInventory()
+    fun setTriggerOwned(owned: Boolean) {
+        triggerOwned.set(owned)
     }
 
-    /** Called on hardware trigger key UP. Always stops inventory. */
+    /**
+     * True when the app should consume the hardware trigger key (RFID+Barcode
+     * mode, any screen). MainActivity uses this to decide whether to swallow the
+     * key or let it pass through to the system barcode scanner service. In
+     * barcode-only mode this is false so the trigger reaches the scanner.
+     */
+    fun isGateOpen(): Boolean = triggerOwned.get()
+
+    /**
+     * Called on every hardware trigger key DOWN (including auto-repeats while
+     * held). Starts a sweep only when the inventory gate is open; every DOWN also
+     * refreshes the hold keep-alive so the sweep runs for as long as the trigger
+     * is physically held.
+     */
+    fun triggerPress() {
+        if (!gated.get()) return
+        lastTriggerDownMs = System.currentTimeMillis()
+        if (running.get()) return  // already sweeping — this DOWN just kept it alive
+        _holdCount.value = 0
+        startInventory()
+        startHoldWatchdog()
+    }
+
+    /** Called on hardware trigger key UP. Stops the sweep immediately (fast path). */
     fun triggerRelease() {
+        holdJob?.cancel()
+        holdJob = null
         stopInventory()
         // Reset throttle so a fresh press treats every tag as new.
         lastEmitMs.clear()
         _holdCount.value = 0
+    }
+
+    /**
+     * Ends the sweep once the trigger's auto-repeat DOWNs stop arriving — the
+     * safety net for devices that don't deliver a clean ACTION_UP. The keep-alive
+     * window comfortably spans the initial key-repeat delay so it won't cut a
+     * genuine hold short.
+     */
+    private fun startHoldWatchdog() {
+        holdJob?.cancel()
+        holdJob = controllerScope.launch {
+            while (isActive && running.get()) {
+                delay(100)
+                if (System.currentTimeMillis() - lastTriggerDownMs > HOLD_KEEPALIVE_MS) {
+                    Log.i(TAG, "hold keep-alive expired — stopping sweep")
+                    stopInventory()
+                    break
+                }
+            }
+        }
     }
 
     @Synchronized

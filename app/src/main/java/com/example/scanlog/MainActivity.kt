@@ -49,10 +49,10 @@ class MainActivity : ComponentActivity() {
         if (code in TRIGGER_KEYCODES && RfidController.isGateOpen()) {
             when (event.action) {
                 KeyEvent.ACTION_DOWN -> {
-                    if (event.repeatCount == 0) {
-                        Log.d(TAG, "trigger DOWN keyCode=$code")
-                        RfidController.triggerPress()
-                    }
+                    // Fire on every DOWN, including auto-repeats while the trigger
+                    // is held — RfidController uses them as the hold keep-alive.
+                    if (event.repeatCount == 0) Log.d(TAG, "trigger DOWN keyCode=$code")
+                    RfidController.triggerPress()
                     return true
                 }
                 KeyEvent.ACTION_UP -> {

@@ -69,6 +69,13 @@ fun AppNav() {
         scanVM.setScanEnabled(currentRoute == Tab.Scan.route)
     }
 
+    // Trigger ownership: in RFID+Barcode mode the app consumes the trigger on
+    // EVERY screen so the barcode laser never fires (and beeps) off-workflow —
+    // e.g. while browsing the Counts tab looking for a tag.
+    LaunchedEffect(scanMode) {
+        RfidController.setTriggerOwned(scanMode == ScanMode.RFID_AND_BARCODE)
+    }
+
     // RFID gate: open only when (mode == RFID+Barcode) AND user is on a screen that uses RFID.
     // Inventory itself no longer auto-starts — it fires on hardware trigger keypress
     // (see MainActivity.dispatchKeyEvent).
