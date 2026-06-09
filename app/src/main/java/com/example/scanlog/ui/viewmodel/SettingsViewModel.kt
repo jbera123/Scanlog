@@ -69,15 +69,19 @@ class SettingsViewModel(app: Application) : AndroidViewModel(app) {
     fun setScanMode(mode: ScanMode) {
         viewModelScope.launch {
             store.setScanMode(mode)
+            val rfid = mode == ScanMode.RFID_AND_BARCODE
             // If switching out of RFID mode, make sure the reader isn't running.
-            if (mode == ScanMode.BARCODE_ONLY) {
+            if (!rfid) {
                 RfidController.setGate(false)
             }
             // Tie the T02 laser's continuous flag to the workflow:
             //   RFID+Barcode → continuous (sweep with held trigger)
             //   Barcode-only → one shot per press (clean counting)
+            // Re-run init() (not just setContinuous) so the scanner is re-opened
+            // cleanly — a mode swap shouldn't be able to leave the laser wedged.
             // No-op on PDAs without the BLD ScanManager.
-            BldScanner.setContinuous(mode == ScanMode.RFID_AND_BARCODE)
+            BldScanner.setContinuous(rfid)
+            BldScanner.init(getApplication())
         }
     }
 }

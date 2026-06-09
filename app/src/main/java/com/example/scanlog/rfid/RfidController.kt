@@ -143,8 +143,16 @@ object RfidController {
      * any inventory in progress is stopped. Called by AppNav.
      */
     fun setGate(enabled: Boolean) {
-        gated.set(enabled)
-        if (!enabled) stopInventory()
+        val was = gated.getAndSet(enabled)
+        // Whether opening or closing the gate, clear any leftover inventory state
+        // so the next trigger press starts a clean sweep. Switching scan modes /
+        // tabs is the usual caller, and that's exactly when a stale running flag
+        // would otherwise wedge the trigger.
+        stopInventory()
+        if (enabled && !was) {
+            lastEmitMs.clear()
+            _holdCount.value = 0
+        }
     }
 
     /**
@@ -196,10 +204,15 @@ object RfidController {
 
     @Synchronized
     fun stopInventory() {
-        if (!opened.get() || !running.get()) return
+        // Always clear the running flag first — even if the serial dropped
+        // (opened == false) mid-sweep. Leaving it stuck true would block every
+        // future startInventory() AND wedge the health-check reconnect (which
+        // skips while running), so the trigger would stay dead until an app
+        // restart or mode swap. getAndSet guarantees the reset happens.
+        if (!running.getAndSet(false)) return
+        if (!opened.get()) return
         val stop = MsgBaseStop()
         client.sendSynMsg(stop)
-        running.set(false)
         Log.i(TAG, "inventory stopped rtCode=${stop.rtCode}")
     }
 
