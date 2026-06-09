@@ -36,6 +36,7 @@ fun SettingsScreen(vm: SettingsViewModel = viewModel()) {
     val windowMs by vm.dupWindowMs.collectAsState()
     val rfidRange by vm.rfidRange.collectAsState()
     val scanMode by vm.scanMode.collectAsState()
+    val allowRepeated by vm.allowRepeatedScans.collectAsState()
 
     var secondsText by remember(windowMs) { mutableStateOf((windowMs / 1000L).toString()) }
 
@@ -71,6 +72,32 @@ fun SettingsScreen(vm: SettingsViewModel = viewModel()) {
                 }
                 Text(
                     text = stringResource(R.string.settings_scan_mode_hint),
+                    style = MaterialTheme.typography.bodySmall,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant
+                )
+            }
+        }
+
+        Card {
+            Column(
+                modifier = Modifier.padding(16.dp),
+                verticalArrangement = Arrangement.spacedBy(8.dp)
+            ) {
+                Row(
+                    modifier = Modifier.fillMaxWidth(),
+                    horizontalArrangement = Arrangement.SpaceBetween
+                ) {
+                    Text(
+                        text = stringResource(R.string.settings_allow_repeated),
+                        style = MaterialTheme.typography.bodyLarge
+                    )
+                    Switch(
+                        checked = allowRepeated,
+                        onCheckedChange = { vm.setAllowRepeatedScans(it) }
+                    )
+                }
+                Text(
+                    text = stringResource(R.string.settings_allow_repeated_hint),
                     style = MaterialTheme.typography.bodySmall,
                     color = MaterialTheme.colorScheme.onSurfaceVariant
                 )

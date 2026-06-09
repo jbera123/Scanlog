@@ -1,3 +1,6 @@
+import java.text.SimpleDateFormat
+import java.util.Date
+
 plugins {
     id("com.android.application")
     id("org.jetbrains.kotlin.plugin.compose")
@@ -33,6 +36,37 @@ android {
     }
 
     sourceSets["main"].jniLibs.srcDirs("libs")
+}
+
+// --- Auto-copy a timestamped, named APK to the top of scanlog_2 on every
+// assembleDebug. Resolves the real project top even when building from a git
+// worktree nested under .claude/worktrees/<name>. Output is gitignored. ---
+val scanlogTopDir: File = run {
+    val root = rootProject.rootDir
+    if (root.path.replace('\\', '/').contains("/.claude/worktrees/")) {
+        // <name> -> worktrees -> .claude -> scanlog_2
+        root.parentFile.parentFile.parentFile
+    } else root
+}
+
+tasks.register("copyDebugApkToTop") {
+    doLast {
+        val apk = layout.buildDirectory
+            .file("outputs/apk/debug/app-debug.apk").get().asFile
+        if (!apk.exists()) {
+            logger.warn("copyDebugApkToTop: APK not found at $apk")
+            return@doLast
+        }
+        val ts = SimpleDateFormat("yyyyMMdd-HHmmss").format(Date())
+        val ver = android.defaultConfig.versionName ?: "0"
+        val dest = File(scanlogTopDir, "scanlog-v$ver-debug-$ts.apk")
+        apk.copyTo(dest, overwrite = true)
+        logger.lifecycle("Copied APK -> $dest")
+    }
+}
+
+tasks.matching { it.name == "assembleDebug" }.configureEach {
+    finalizedBy("copyDebugApkToTop")
 }
 
 dependencies {

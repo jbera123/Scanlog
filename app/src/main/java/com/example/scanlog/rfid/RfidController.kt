@@ -222,9 +222,14 @@ object RfidController {
     }
 
     /**
-     * Periodic ping. Runs only when the reader is idle (not mid-inventory) so we
-     * don't disturb an active sweep. On failure, tears down and re-runs init() —
-     * useful if the serial cable / power glitches mid-session.
+     * Passive periodic ping for connection-state reporting only.
+     *
+     * It deliberately does NOT tear down / reopen on a failed ping. On this serial
+     * hardware a close()+power-cycle+reopen frequently fails to recover and leaves
+     * the reader permanently dead until a cold app restart — which is exactly the
+     * "worked once, then stopped" failure we saw. The reader is opened once at
+     * startup and left open for the app's lifetime; if it genuinely drops, the
+     * user cold-starts the app (which re-opens it cleanly).
      */
     private fun startHealthCheck() {
         healthJob?.cancel()
@@ -232,20 +237,8 @@ object RfidController {
             while (isActive) {
                 delay(HEALTH_INTERVAL_MS)
                 if (!opened.get() || running.get()) continue
-                val healthy = pingOnce()
-                if (!healthy) {
-                    Log.w(TAG, "health check failed — attempting reconnect")
-                    _connState.value = ConnState.RECONNECTING
-                    runCatching { client.close() }
-                    opened.set(false)
-                    PowerUtil.power("0")
-                    delay(500)
-                    val ok = init()
-                    if (!ok) {
-                        Log.w(TAG, "reconnect failed; will retry in $HEALTH_INTERVAL_MS ms")
-                        _connState.value = ConnState.DISCONNECTED
-                    }
-                }
+                _connState.value =
+                    if (pingOnce()) ConnState.CONNECTED else ConnState.DISCONNECTED
             }
         }
     }

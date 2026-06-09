@@ -38,6 +38,10 @@ class ScanStore(private val context: Context) {
         val RFID_RANGE = stringPreferencesKey("rfid_range")
         val SCAN_MODE = stringPreferencesKey("scan_mode")
 
+        // Testing aid: when "true", the per-day unique-EPC dedup is bypassed so the
+        // same tag can be counted repeatedly without deleting the day.
+        val ALLOW_REPEATED = stringPreferencesKey("allow_repeated_scans")
+
         // NEW: recent scan events for Scan tab
         val RECENT_EVENTS_JSON = stringPreferencesKey("recent_events_json")
 
@@ -207,6 +211,15 @@ class ScanStore(private val context: Context) {
         context.dataStore.edit { it[Keys.SCAN_MODE] = mode.name }
     }
 
+    val allowRepeatedScans: Flow<Boolean> =
+        context.dataStore.data.map { prefs ->
+            prefs[Keys.ALLOW_REPEATED]?.toBooleanStrictOrNull() ?: false
+        }
+
+    suspend fun setAllowRepeatedScans(enabled: Boolean) {
+        context.dataStore.edit { it[Keys.ALLOW_REPEATED] = enabled.toString() }
+    }
+
     // --- NEW: Recent events for Scan tab ---
 
     val recentEvents: Flow<List<ScanEvent>> =
@@ -321,7 +334,8 @@ class ScanStore(private val context: Context) {
     suspend fun recordRfidTag(
         epcRaw: String,
         rollupCodeRaw: String,
-        nowMs: Long = System.currentTimeMillis()
+        nowMs: Long = System.currentTimeMillis(),
+        allowRepeat: Boolean = false
     ): Int? {
         val epc = normalize(epcRaw)
         val rollup = normalize(rollupCodeRaw)
@@ -334,8 +348,10 @@ class ScanStore(private val context: Context) {
             val day = todayKey()
             val current = readDay(root, day)
 
-            // Per-tag dedup: same physical EPC only counts once per day.
-            if (epc in current.seenEpcs) {
+            // Per-tag dedup: same physical EPC only counts once per day. When
+            // allowRepeat is set (testing toggle) we skip this so the same tag can
+            // be counted again and again without deleting the day.
+            if (!allowRepeat && epc in current.seenEpcs) {
                 recordedCountAfter = null
                 return@edit
             }
