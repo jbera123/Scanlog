@@ -54,6 +54,8 @@
     <string name="settings_rfid_range_hint">Weak = close-only verify. Medium = reach blocked / farther tags. Strong = max range for counting days.</string>
     <string name="settings_scan_mode">Scan mode</string>
     <string name="settings_scan_mode_hint">RFID + Barcode enables the Match tab for cross-reference. Barcode only hides it.</string>
+    <string name="settings_allow_repeated">Allow repeated scans (testing)</string>
+    <string name="settings_allow_repeated_hint">Counts the same tag every time instead of once per day. For testing — turn off for real counting.</string>
 
     <!-- Match screen -->
     <string name="match_scan_rfid">Scan RFID tag</string>

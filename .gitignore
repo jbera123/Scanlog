@@ -6,3 +6,6 @@
 *.iml
 .DS_Store
 .claude/
+# Timestamped APKs auto-copied to the project top by copyDebugApkToTop
+/scanlog-*.apk
+/app-debug.apk

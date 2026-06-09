@@ -54,6 +54,8 @@
     <string name="settings_rfid_range_hint">弱 = 仅近距核验。中 = 兼顾遮挡 / 较远标签。强 = 盘点最大距离。</string>
     <string name="settings_scan_mode">扫描模式</string>
     <string name="settings_scan_mode_hint">RFID + 条码模式启用比对页。仅条码模式会隐藏该页。</string>
+    <string name="settings_allow_repeated">允许重复扫描（测试）</string>
+    <string name="settings_allow_repeated_hint">同一标签每次都计数，而非每天仅一次。仅供测试，正式盘点时请关闭。</string>
 
     <!-- Match screen -->
     <string name="match_scan_rfid">请扫描 RFID 标签</string>

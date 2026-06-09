@@ -40,6 +40,10 @@ class ScanViewModel(app: Application) : AndroidViewModel(app) {
     private val seenEpcCache: StateFlow<Set<String>> =
         store.todaySeenEpcs.stateIn(viewModelScope, SharingStarted.Eagerly, emptySet())
 
+    // Testing toggle: when true, the same EPC counts every time (per-day dedup off).
+    private val allowRepeatedScans: StateFlow<Boolean> =
+        store.allowRepeatedScans.stateIn(viewModelScope, SharingStarted.Eagerly, false)
+
     // Recent scan events (in-memory)
     private val _recentEvents = MutableStateFlow<List<ScanEvent>>(emptyList())
     val recentEvents: StateFlow<List<ScanEvent>> = _recentEvents.asStateFlow()
@@ -88,17 +92,20 @@ class ScanViewModel(app: Application) : AndroidViewModel(app) {
             return
         }
 
+        val repeat = allowRepeatedScans.value
+
         // Fast path: in-memory dedup. Avoids a DataStore edit on every re-emit
         // of an already-counted tag (which the per-EPC throttle still lets
-        // through once per ~1s for tags sitting in the field).
-        if (epcTrim in seenEpcCache.value) {
+        // through once per ~1s for tags sitting in the field). Skipped when the
+        // repeated-scans testing toggle is on.
+        if (!repeat && epcTrim in seenEpcCache.value) {
             onResult(false)
             return
         }
 
         viewModelScope.launch {
             val now = System.currentTimeMillis()
-            val countAfter = store.recordRfidTag(epcTrim, rollup, now)
+            val countAfter = store.recordRfidTag(epcTrim, rollup, now, allowRepeat = repeat)
 
             if (countAfter == null) {
                 // Race: another caller persisted it between the cache check and
