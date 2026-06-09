@@ -7,6 +7,7 @@ import androidx.activity.ComponentActivity
 import androidx.activity.compose.setContent
 import com.example.scanlog.rfid.RfidController
 import com.example.scanlog.ui.theme.ScanlogTheme
+import com.example.scanlog.util.BldScanner
 
 class MainActivity : ComponentActivity() {
 
@@ -17,6 +18,17 @@ class MainActivity : ComponentActivity() {
                 AppNav()
             }
         }
+    }
+
+    /**
+     * Device sleep can drop the UHF serial/power rail and close the laser while
+     * leaving our in-app state stale, so the trigger does nothing on wake. Re-verify
+     * the reader and re-wake the laser on every resume so scanning works immediately.
+     */
+    override fun onResume() {
+        super.onResume()
+        RfidController.ensureConnected()
+        BldScanner.init(applicationContext)
     }
 
     /**

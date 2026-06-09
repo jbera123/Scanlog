@@ -222,6 +222,32 @@ object RfidController {
     }
 
     /**
+     * Re-verify the reader after the app returns to the foreground. Device sleep
+     * can cut the UHF power rail / invalidate the serial handle while leaving our
+     * `opened` flag stale — so the next trigger press silently does nothing until
+     * the 30 s health check happens to notice. Call this from Activity.onResume to
+     * recover immediately. No-op while a sweep is already in progress.
+     */
+    fun ensureConnected() {
+        controllerScope.launch {
+            if (running.get()) return@launch
+            val alive = opened.get() && pingOnce()
+            if (alive) return@launch
+            Log.w(TAG, "ensureConnected: reader unresponsive after resume — reconnecting")
+            _connState.value = ConnState.RECONNECTING
+            runCatching { client.close() }
+            opened.set(false)
+            PowerUtil.power("0")
+            delay(300)
+            val ok = init()
+            if (!ok) {
+                Log.w(TAG, "ensureConnected: reconnect failed")
+                _connState.value = ConnState.DISCONNECTED
+            }
+        }
+    }
+
+    /**
      * Periodic ping. Runs only when the reader is idle (not mid-inventory) so we
      * don't disturb an active sweep. On failure, tears down and re-runs init() —
      * useful if the serial cable / power glitches mid-session.

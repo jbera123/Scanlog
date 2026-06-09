@@ -23,6 +23,9 @@ object BldScanner {
     private const val OP_MODE_BROADCAST = 0
 
     @Volatile private var instance: Any? = null
+    // Last requested continuous setting, re-applied whenever the scanner is
+    // (re)opened — e.g. after a device-sleep resume re-runs init().
+    @Volatile private var continuous: Boolean = false
 
     /** True if the T02 ScanManager class is present at runtime. */
     fun isAvailable(): Boolean = try {
@@ -38,6 +41,7 @@ object BldScanner {
      * - false: one decode per trigger press. Right for barcode-only counting.
      */
     fun setContinuous(continuous: Boolean) {
+        this.continuous = continuous
         val sm = instance ?: return
         runCatching {
             sm.javaClass.getMethod("setContinueScan", Boolean::class.javaPrimitiveType)
@@ -66,6 +70,10 @@ object BldScanner {
             runCatching {
                 cls.getMethod("openScanner").invoke(sm)
             }.onFailure { Log.w(TAG, "openScanner failed: ${it.message}") }
+
+            // Re-apply the remembered continuous mode — opening the scanner can
+            // reset it to the default, which would break a resume after sleep.
+            setContinuous(continuous)
 
             Log.i(TAG, "BLD ScanManager initialized (broadcast mode)")
         } catch (_: ClassNotFoundException) {
