@@ -33,8 +33,6 @@ import com.example.scanlog.ui.viewmodel.ScanViewModel
 import com.example.scanlog.ui.viewmodel.SettingsViewModel
 import com.example.scanlog.data.ScanMode
 import com.example.scanlog.rfid.RfidController
-import kotlinx.coroutines.Dispatchers
-import kotlinx.coroutines.withContext
 
 private sealed class Tab(val route: String, @StringRes val labelRes: Int) {
     data object Scan : Tab("scan", R.string.tab_scan)
@@ -71,15 +69,11 @@ fun AppNav() {
         scanVM.setScanEnabled(currentRoute == Tab.Scan.route)
     }
 
-    // Reader lifecycle: power on / open the UHF reader ONLY while in RFID+Barcode
-    // mode, and release it when leaving. In barcode-only mode (the default) the
-    // reader is never opened, so the app can't be destabilized or crashed by it.
+    // Reader lifecycle: the reader is opened only while RFID mode is active AND the
+    // app is in the foreground (foreground is tracked by MainActivity). In
+    // barcode-only mode the reader is never opened. See RfidController.reconcile().
     LaunchedEffect(scanMode) {
-        if (scanMode == ScanMode.RFID_AND_BARCODE) {
-            withContext(Dispatchers.IO) { RfidController.init() }
-        } else {
-            withContext(Dispatchers.IO) { RfidController.release() }
-        }
+        RfidController.setRfidActive(scanMode == ScanMode.RFID_AND_BARCODE)
     }
 
     // RFID gate: open only when (mode == RFID+Barcode) AND user is on a screen that uses RFID.
