@@ -73,7 +73,6 @@ fun ScanScreen(
 
     val scanMode by settingsVm.scanMode.collectAsState()
     val rfidRange by settingsVm.rfidRange.collectAsState()
-    val holdCount by RfidController.holdCount.collectAsState()
 
     val recentEvents by vm.recentEvents.collectAsState()
     val todayCounts by vm.todayCounts.collectAsState()
@@ -247,19 +246,8 @@ fun ScanScreen(
                     Spacer(Modifier.height(8.dp))
                     Row(
                         Modifier.fillMaxWidth(),
-                        horizontalArrangement = Arrangement.SpaceBetween
+                        horizontalArrangement = Arrangement.End
                     ) {
-                        // Live "+N" counter for the active trigger-hold. Hidden when 0
-                        // so it doesn't compete with the SKU rows.
-                        if (holdCount > 0) {
-                            Text(
-                                text = "+$holdCount",
-                                style = MaterialTheme.typography.titleMedium,
-                                color = Color(0xFF00C853)
-                            )
-                        } else {
-                            Spacer(Modifier.width(1.dp))
-                        }
                         AssistChip(
                             // Tap to cycle Weak → Medium → Strong → Weak — saves a trip
                             // to Settings when the range needs a quick adjust mid-sweep.
