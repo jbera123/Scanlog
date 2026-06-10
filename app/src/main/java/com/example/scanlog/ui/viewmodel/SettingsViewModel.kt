@@ -79,4 +79,17 @@ class SettingsViewModel(app: Application) : AndroidViewModel(app) {
             BldScanner.setContinuous(mode == ScanMode.RFID_AND_BARCODE)
         }
     }
+
+    val allowRepeatedScans: StateFlow<Boolean> =
+        store.allowRepeatedScans.stateIn(
+            scope = viewModelScope,
+            started = SharingStarted.Eagerly,
+            initialValue = false
+        )
+
+    fun setAllowRepeatedScans(enabled: Boolean) {
+        viewModelScope.launch {
+            store.setAllowRepeatedScans(enabled)
+        }
+    }
 }

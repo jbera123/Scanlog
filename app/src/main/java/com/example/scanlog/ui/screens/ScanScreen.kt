@@ -70,6 +70,7 @@ fun ScanScreen(
     val rfidCatalog = remember(appContext) { RfidBarcodeCatalog(appContext) }
 
     val scanMode by settingsVm.scanMode.collectAsState()
+    val holdCount by RfidController.holdCount.collectAsState()
 
     val recentEvents by vm.recentEvents.collectAsState()
     val todayCounts by vm.todayCounts.collectAsState()
@@ -240,6 +241,16 @@ fun ScanScreen(
                     Text(
                         text = stringResource(R.string.total, total),
                         style = MaterialTheme.typography.titleMedium
+                    )
+                }
+
+                // Live "+N" badge for the active trigger-hold (RFID mode only).
+                if (scanMode == ScanMode.RFID_AND_BARCODE && holdCount > 0) {
+                    Spacer(Modifier.height(4.dp))
+                    Text(
+                        text = "+$holdCount",
+                        style = MaterialTheme.typography.titleMedium,
+                        color = Color(0xFF00C853)
                     )
                 }
 
