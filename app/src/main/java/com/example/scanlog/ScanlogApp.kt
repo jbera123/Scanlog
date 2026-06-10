@@ -3,7 +3,6 @@ package com.example.scanlog
 import android.app.Application
 import com.example.scanlog.data.ScanMode
 import com.example.scanlog.data.ScanStore
-import com.example.scanlog.rfid.RfidController
 import com.example.scanlog.util.BldScanner
 import com.example.scanlog.util.CountExporter
 import java.time.LocalDate
@@ -46,12 +45,10 @@ class ScanlogApp : Application() {
             val mode = store.scanMode.first()
             BldScanner.setContinuous(mode == ScanMode.RFID_AND_BARCODE)
 
-            val ok = RfidController.init()
-            if (ok) {
-                // Apply the persisted range immediately so the reader matches the UI.
-                val range = store.rfidRange.first()
-                RfidController.setRange(range)
-            }
+            // NOTE: the UHF reader is deliberately NOT opened here. It is opened
+            // lazily by AppNav only when the user is in RFID_AND_BARCODE mode, so
+            // the default barcode-only app never powers on (or can be destabilized
+            // by) the reader. See AppNav's scanMode effect.
 
             // Daily auto-export: any past-day's counts that haven't been written
             // to Downloads yet get exported now. Today's data is left alone.

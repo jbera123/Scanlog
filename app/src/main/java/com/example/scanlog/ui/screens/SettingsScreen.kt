@@ -26,7 +26,6 @@ import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.unit.dp
 import androidx.lifecycle.viewmodel.compose.viewModel
 import com.example.scanlog.R
-import com.example.scanlog.data.RfidRange
 import com.example.scanlog.data.ScanMode
 import com.example.scanlog.ui.viewmodel.SettingsViewModel
 
@@ -34,9 +33,7 @@ import com.example.scanlog.ui.viewmodel.SettingsViewModel
 fun SettingsScreen(vm: SettingsViewModel = viewModel()) {
     val enabled by vm.dupEnabled.collectAsState()
     val windowMs by vm.dupWindowMs.collectAsState()
-    val rfidRange by vm.rfidRange.collectAsState()
     val scanMode by vm.scanMode.collectAsState()
-    val allowRepeated by vm.allowRepeatedScans.collectAsState()
 
     var secondsText by remember(windowMs) { mutableStateOf((windowMs / 1000L).toString()) }
 
@@ -81,32 +78,6 @@ fun SettingsScreen(vm: SettingsViewModel = viewModel()) {
         Card {
             Column(
                 modifier = Modifier.padding(16.dp),
-                verticalArrangement = Arrangement.spacedBy(8.dp)
-            ) {
-                Row(
-                    modifier = Modifier.fillMaxWidth(),
-                    horizontalArrangement = Arrangement.SpaceBetween
-                ) {
-                    Text(
-                        text = stringResource(R.string.settings_allow_repeated),
-                        style = MaterialTheme.typography.bodyLarge
-                    )
-                    Switch(
-                        checked = allowRepeated,
-                        onCheckedChange = { vm.setAllowRepeatedScans(it) }
-                    )
-                }
-                Text(
-                    text = stringResource(R.string.settings_allow_repeated_hint),
-                    style = MaterialTheme.typography.bodySmall,
-                    color = MaterialTheme.colorScheme.onSurfaceVariant
-                )
-            }
-        }
-
-        Card {
-            Column(
-                modifier = Modifier.padding(16.dp),
                 verticalArrangement = Arrangement.spacedBy(12.dp)
             ) {
                 Row(
@@ -140,35 +111,6 @@ fun SettingsScreen(vm: SettingsViewModel = viewModel()) {
                 ) {
                     Text(stringResource(R.string.settings_apply))
                 }
-            }
-        }
-
-        Card {
-            Column(
-                modifier = Modifier.padding(16.dp),
-                verticalArrangement = Arrangement.spacedBy(12.dp)
-            ) {
-                Text(
-                    text = stringResource(R.string.settings_rfid_range),
-                    style = MaterialTheme.typography.bodyLarge
-                )
-                Row(
-                    modifier = Modifier.fillMaxWidth(),
-                    horizontalArrangement = Arrangement.spacedBy(8.dp)
-                ) {
-                    RfidRange.entries.forEach { range ->
-                        FilterChip(
-                            selected = rfidRange == range,
-                            onClick = { vm.setRfidRange(range) },
-                            label = { Text(range.label) }
-                        )
-                    }
-                }
-                Text(
-                    text = stringResource(R.string.settings_rfid_range_hint),
-                    style = MaterialTheme.typography.bodySmall,
-                    color = MaterialTheme.colorScheme.onSurfaceVariant
-                )
             }
         }
     }
