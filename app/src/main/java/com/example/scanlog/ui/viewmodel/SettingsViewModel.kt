@@ -3,6 +3,7 @@ package com.example.scanlog.ui.viewmodel
 import android.app.Application
 import androidx.lifecycle.AndroidViewModel
 import androidx.lifecycle.viewModelScope
+import com.example.scanlog.data.RfidRange
 import com.example.scanlog.data.ScanMode
 import com.example.scanlog.data.ScanStore
 import com.example.scanlog.rfid.RfidController
@@ -40,6 +41,20 @@ class SettingsViewModel(app: Application) : AndroidViewModel(app) {
     fun setDupWindowSeconds(seconds: Long) {
         viewModelScope.launch {
             store.setDuplicateWindowMs(seconds * 1000L)
+        }
+    }
+
+    val rfidRange: StateFlow<RfidRange> =
+        store.rfidRange.stateIn(
+            scope = viewModelScope,
+            started = SharingStarted.Eagerly,
+            initialValue = RfidRange.STRONG
+        )
+
+    fun setRfidRange(range: RfidRange) {
+        viewModelScope.launch {
+            store.setRfidRange(range)
+            RfidController.setRange(range)
         }
     }
 

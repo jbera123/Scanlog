@@ -1,6 +1,7 @@
 package com.example.scanlog.rfid
 
 import android.util.Log
+import com.example.scanlog.data.RfidRange
 import com.gg.reader.api.dal.GClient
 import com.gg.reader.api.dal.HandlerTagEpcLog
 import com.gg.reader.api.dal.HandlerTagEpcOver
@@ -49,15 +50,21 @@ object RfidController {
     // Controlled by AppNav based on (scan mode == RFID_AND_BARCODE) AND (current tab in {scan, match}).
     private val gated = AtomicBoolean(false)
 
-    // Single fixed reader config (range tiers removed). Power in dBm, RSSI floor in
-    // dBm (0 == NO filter — read every tag, like the working demo). This matches the
-    // counting-day "STRONG" config (max power, no floor). A non-zero floor here was
-    // silently filtering out tags so nothing read.
-    private const val FIXED_POWER_DBM = 33
-    private const val FIXED_RSSI_FLOOR = 0
+    // Phase 3 — range tiers tune POWER only; the RSSI floor stays 0 for EVERY tier
+    // (a non-zero floor silently filtered tags out — see ROADMAP guardrail #2).
+    // Lower power = shorter read range (close-only) without dropping any tag that
+    // does respond. Default STRONG (33 dBm) = the known-good counting config.
+    private const val RSSI_FLOOR = 0
+    @Volatile private var powerDbm: Int = 33
 
-    // Current RSSI floor (dBm). 0 == no filter.
-    @Volatile private var rssiFloorDbm: Int = FIXED_RSSI_FLOOR
+    private fun powerFor(range: RfidRange): Int = when (range) {
+        RfidRange.WEAK   -> 18   // ~close-only verify
+        RfidRange.MEDIUM -> 26   // mid range
+        RfidRange.STRONG -> 33   // max range, counting
+    }
+
+    // Current RSSI floor (dBm). 0 == no filter (always 0 — see above).
+    @Volatile private var rssiFloorDbm: Int = RSSI_FLOOR
 
     // Phase 2 — per-EPC throttle. The reader reports a tag held in the field many
     // times/sec; this drops repeats of the SAME epc within the window so a long
@@ -136,9 +143,9 @@ object RfidController {
                 Log.i(TAG, "reader opened at $baud")
                 wireCallbacks()
                 opened.set(true)
-                // Single fixed config — no runtime range tuning.
-                applyPower(FIXED_POWER_DBM)
-                applyTagLog(rssiTv = FIXED_RSSI_FLOOR, repeatedMs = 0)
+                // Apply current range (power) + no RSSI filter.
+                applyPower(powerDbm)
+                applyTagLog(rssiTv = RSSI_FLOOR, repeatedMs = 0)
                 return true
             } else {
                 Log.w(TAG, "handshake failed at $baud rtCode=${stop.rtCode} msg=${stop.rtMsg}")
@@ -175,6 +182,16 @@ object RfidController {
      * scanner service untouched.
      */
     fun isGateOpen(): Boolean = gated.get()
+
+    /**
+     * Set the read-range tier. Tunes transmit POWER only — the RSSI floor stays 0
+     * so no tag that responds is ever filtered out. Safe to call before the reader
+     * is open (caches the power; applied on next init()).
+     */
+    fun setRange(range: RfidRange) {
+        powerDbm = powerFor(range)
+        if (opened.get()) applyPower(powerDbm)
+    }
 
     /** Called on hardware trigger key DOWN. Starts inventory only if gate is open. */
     fun triggerPress() {
