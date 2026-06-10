@@ -46,9 +46,11 @@ object RfidController {
     private val gated = AtomicBoolean(false)
 
     // Single fixed reader config (range tiers removed). Power in dBm, RSSI floor in
-    // dBm (0 == no floor). Strong-ish with a light floor — good for counting at range.
-    private const val FIXED_POWER_DBM = 30
-    private const val FIXED_RSSI_FLOOR = -70
+    // dBm (0 == NO filter — read every tag, like the working demo). This matches the
+    // counting-day "STRONG" config (max power, no floor). A non-zero floor here was
+    // silently filtering out tags so nothing read.
+    private const val FIXED_POWER_DBM = 33
+    private const val FIXED_RSSI_FLOOR = 0
 
     // Current RSSI floor (dBm). 0 == no filter.
     @Volatile private var rssiFloorDbm: Int = FIXED_RSSI_FLOOR
@@ -71,7 +73,7 @@ object RfidController {
         val baudRates = intArrayOf(460800, 115200)
         for (baud in baudRates) {
             val path = "$SERIAL_DEV:$baud"
-            val ok = runCatching { client.openAndroidSerial(path, 10) }
+            val ok = runCatching { client.openAndroidSerial(path, 0) }
                 .onFailure { Log.w(TAG, "openAndroidSerial($path) threw: ${it.message}") }
                 .getOrDefault(false)
             if (!ok) {
@@ -142,6 +144,10 @@ object RfidController {
             return
         }
         if (running.get()) return
+
+        // Re-assert the tag callback right before each inventory, like the demo does
+        // — cheap insurance against it ever being cleared.
+        wireCallbacks()
 
         // Flush anything already in flight.
         client.sendUnsynMsg(MsgBaseStop())
