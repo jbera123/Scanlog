@@ -59,6 +59,13 @@ object RfidController {
     // Current RSSI floor (dBm). 0 == no filter.
     @Volatile private var rssiFloorDbm: Int = FIXED_RSSI_FLOOR
 
+    // Phase 2 — per-EPC throttle. The reader reports a tag held in the field many
+    // times/sec; this drops repeats of the SAME epc within the window so a long
+    // hold doesn't flood the recording path. Purely in-memory (never touches the
+    // serial). Cleared on triggerRelease so a fresh press treats every tag as new.
+    private const val THROTTLE_MS = 1000L
+    private val lastEmitMs = java.util.concurrent.ConcurrentHashMap<String, Long>()
+
     private val _tagFlow = MutableSharedFlow<String>(
         replay = 0,
         extraBufferCapacity = 128
@@ -178,6 +185,7 @@ object RfidController {
     /** Called on hardware trigger key UP. Always stops inventory. */
     fun triggerRelease() {
         stopInventory()
+        lastEmitMs.clear()
     }
 
     @Synchronized
@@ -229,6 +237,12 @@ object RfidController {
             if (floor != 0 && dbm < floor) return@HandlerTagEpcLog
             val epc = info.epc?.trim()?.uppercase() ?: return@HandlerTagEpcLog
             if (epc.isEmpty()) return@HandlerTagEpcLog
+
+            // Throttle: drop a repeat of the same EPC seen within the window.
+            val now = System.currentTimeMillis()
+            val prev = lastEmitMs[epc]
+            if (prev != null && now - prev < THROTTLE_MS) return@HandlerTagEpcLog
+            lastEmitMs[epc] = now
 
             _tagFlow.tryEmit(epc)
         }
