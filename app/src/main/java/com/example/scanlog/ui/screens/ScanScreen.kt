@@ -197,8 +197,12 @@ fun ScanScreen(
             val filter = IntentFilter().apply {
                 ScannerConstants.ALL_DECODE_ACTIONS.forEach { addAction(it) }
             }
+            // The barcode broadcast comes from the PDA's scanner service (a SEPARATE
+            // app). On Android 13+ (API 33) a runtime receiver must be EXPORTED to
+            // receive broadcasts from other apps — RECEIVER_NOT_EXPORTED would silently
+            // drop them, breaking barcode scanning.
             if (Build.VERSION.SDK_INT >= 33) {
-                appContext.registerReceiver(receiver, filter, Context.RECEIVER_NOT_EXPORTED)
+                appContext.registerReceiver(receiver, filter, Context.RECEIVER_EXPORTED)
             } else {
                 @Suppress("DEPRECATION")
                 appContext.registerReceiver(receiver, filter)
