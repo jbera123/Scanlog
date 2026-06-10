@@ -12,19 +12,9 @@ import com.gg.reader.api.protocol.gx.MsgBaseInventoryEpc
 import com.gg.reader.api.protocol.gx.MsgBaseSetPower
 import com.gg.reader.api.protocol.gx.MsgBaseSetTagLog
 import com.gg.reader.api.protocol.gx.MsgBaseStop
-import kotlinx.coroutines.CoroutineScope
-import kotlinx.coroutines.Dispatchers
-import kotlinx.coroutines.Job
-import kotlinx.coroutines.SupervisorJob
-import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.MutableSharedFlow
-import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.SharedFlow
-import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asSharedFlow
-import kotlinx.coroutines.flow.asStateFlow
-import kotlinx.coroutines.isActive
-import kotlinx.coroutines.launch
 import java.util.Hashtable
 import java.util.concurrent.atomic.AtomicBoolean
 
@@ -57,33 +47,11 @@ object RfidController {
     // Current RSSI floor (dBm). 0 == no filter.
     @Volatile private var rssiFloorDbm: Int = -60
 
-    // Per-trigger throttle: same EPC won't re-emit within this window.
-    // Cuts duplicate downstream work when a tag sits in the field across many
-    // SDK callbacks. Cleared on triggerRelease() so the next press feels instant.
-    private const val THROTTLE_MS_DEFAULT = 1000L
-    @Volatile private var throttleMs: Long = THROTTLE_MS_DEFAULT
-    private val lastEmitMs = java.util.concurrent.ConcurrentHashMap<String, Long>()
-
     private val _tagFlow = MutableSharedFlow<String>(
         replay = 0,
         extraBufferCapacity = 128
     )
     val tagFlow: SharedFlow<String> = _tagFlow.asSharedFlow()
-
-    // Number of distinct EPCs emitted during the current trigger-hold. Resets
-    // when the trigger is released. UI shows it as a "+N" badge so the user
-    // knows the reader is alive during a long sweep.
-    private val _holdCount = MutableStateFlow(0)
-    val holdCount: StateFlow<Int> = _holdCount.asStateFlow()
-
-    // Connection state surfaced for UI / diagnostics.
-    enum class ConnState { DISCONNECTED, CONNECTED, RECONNECTING }
-    private val _connState = MutableStateFlow(ConnState.DISCONNECTED)
-    val connState: StateFlow<ConnState> = _connState.asStateFlow()
-
-    private val controllerScope = CoroutineScope(SupervisorJob() + Dispatchers.IO)
-    private var healthJob: Job? = null
-    private const val HEALTH_INTERVAL_MS = 30_000L
 
     /**
      * Power up and open serial. Returns true if the reader handshook OK.
@@ -110,11 +78,9 @@ object RfidController {
                 Log.i(TAG, "reader opened at $baud")
                 wireCallbacks()
                 opened.set(true)
-                _connState.value = ConnState.CONNECTED
                 // Apply saved range defaults (MEDIUM by default — VM will call setRange later).
                 applyPower(15)
                 applyTagLog(rssiTv = -60, repeatedMs = 0)
-                startHealthCheck()
                 return true
             } else {
                 Log.w(TAG, "handshake failed at $baud rtCode=${stop.rtCode} msg=${stop.rtMsg}")
@@ -129,13 +95,10 @@ object RfidController {
     @Synchronized
     fun release() {
         if (!opened.get()) return
-        healthJob?.cancel()
-        healthJob = null
         stopInventory()
         runCatching { client.close() }
         PowerUtil.power("0")
         opened.set(false)
-        _connState.value = ConnState.DISCONNECTED
     }
 
     /**
@@ -158,16 +121,12 @@ object RfidController {
     /** Called on hardware trigger key DOWN. Starts inventory only if gate is open. */
     fun triggerPress() {
         if (!gated.get()) return
-        _holdCount.value = 0
         startInventory()
     }
 
     /** Called on hardware trigger key UP. Always stops inventory. */
     fun triggerRelease() {
         stopInventory()
-        // Reset throttle so a fresh press treats every tag as new.
-        lastEmitMs.clear()
-        _holdCount.value = 0
     }
 
     @Synchronized
@@ -221,37 +180,6 @@ object RfidController {
         if (wasRunning) startInventory()
     }
 
-    /**
-     * Passive periodic ping for connection-state reporting only.
-     *
-     * It deliberately does NOT tear down / reopen on a failed ping. On this serial
-     * hardware a close()+power-cycle+reopen frequently fails to recover and leaves
-     * the reader permanently dead until a cold app restart — which is exactly the
-     * "worked once, then stopped" failure we saw. The reader is opened once at
-     * startup and left open for the app's lifetime; if it genuinely drops, the
-     * user cold-starts the app (which re-opens it cleanly).
-     */
-    private fun startHealthCheck() {
-        healthJob?.cancel()
-        healthJob = controllerScope.launch {
-            while (isActive) {
-                delay(HEALTH_INTERVAL_MS)
-                if (!opened.get() || running.get()) continue
-                _connState.value =
-                    if (pingOnce()) ConnState.CONNECTED else ConnState.DISCONNECTED
-            }
-        }
-    }
-
-    private fun pingOnce(): Boolean = try {
-        val msg = MsgBaseStop()
-        client.sendSynMsg(msg)
-        msg.rtCode.toInt() == 0
-    } catch (t: Throwable) {
-        Log.w(TAG, "ping threw: ${t.message}")
-        false
-    }
-
     // --- internals ---
 
     private fun wireCallbacks() {
@@ -265,14 +193,7 @@ object RfidController {
             val epc = info.epc?.trim()?.uppercase() ?: return@HandlerTagEpcLog
             if (epc.isEmpty()) return@HandlerTagEpcLog
 
-            // Throttle: drop if same EPC was emitted within the window.
-            val now = System.currentTimeMillis()
-            val prev = lastEmitMs[epc]
-            if (prev != null && now - prev < throttleMs) return@HandlerTagEpcLog
-            lastEmitMs[epc] = now
-
             _tagFlow.tryEmit(epc)
-            _holdCount.value = _holdCount.value + 1
         }
         client.onTagEpcOver = HandlerTagEpcOver { _: String?, _: LogBaseEpcOver? -> /* no-op */ }
     }
