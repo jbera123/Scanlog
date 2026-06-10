@@ -1,7 +1,6 @@
 package com.example.scanlog.rfid
 
 import android.util.Log
-import com.example.scanlog.data.RfidRange
 import com.gg.reader.api.dal.GClient
 import com.gg.reader.api.dal.HandlerTagEpcLog
 import com.gg.reader.api.dal.HandlerTagEpcOver
@@ -21,11 +20,13 @@ import java.util.concurrent.atomic.AtomicBoolean
 /**
  * Singleton wrapper around the GClient SDK.
  *
- * - init() powers up the UHF rail and opens /dev/ttyS3 (tries 460800 then 115200).
+ * - init() powers up the UHF rail and opens /dev/ttyS3 (tries 460800 then 115200),
+ *   then applies a single fixed power + RSSI floor (no runtime range tuning).
  * - startInventory()/stopInventory() drive continuous EPC reads.
- * - setRange() controls both hardware power (dBm via MsgBaseSetPower) and an
- *   in-app RSSI floor applied in the tag callback.
  * - tagFlow emits each accepted EPC string (uppercase, trimmed).
+ *
+ * Lifecycle: opened lazily by AppNav only in RFID_AND_BARCODE mode and released
+ * when leaving it, so the default barcode-only app never powers on the reader.
  *
  * Thread-safety: all public functions are safe to call from the main thread.
  * SDK callbacks arrive on an internal SDK thread — we only do a fast emit +
@@ -44,8 +45,13 @@ object RfidController {
     // Controlled by AppNav based on (scan mode == RFID_AND_BARCODE) AND (current tab in {scan, match}).
     private val gated = AtomicBoolean(false)
 
+    // Single fixed reader config (range tiers removed). Power in dBm, RSSI floor in
+    // dBm (0 == no floor). Strong-ish with a light floor — good for counting at range.
+    private const val FIXED_POWER_DBM = 30
+    private const val FIXED_RSSI_FLOOR = -70
+
     // Current RSSI floor (dBm). 0 == no filter.
-    @Volatile private var rssiFloorDbm: Int = -60
+    @Volatile private var rssiFloorDbm: Int = FIXED_RSSI_FLOOR
 
     private val _tagFlow = MutableSharedFlow<String>(
         replay = 0,
@@ -78,9 +84,9 @@ object RfidController {
                 Log.i(TAG, "reader opened at $baud")
                 wireCallbacks()
                 opened.set(true)
-                // Apply saved range defaults (MEDIUM by default — VM will call setRange later).
-                applyPower(15)
-                applyTagLog(rssiTv = -60, repeatedMs = 0)
+                // Single fixed config — no runtime range tuning.
+                applyPower(FIXED_POWER_DBM)
+                applyTagLog(rssiTv = FIXED_RSSI_FLOOR, repeatedMs = 0)
                 return true
             } else {
                 Log.w(TAG, "handshake failed at $baud rtCode=${stop.rtCode} msg=${stop.rtMsg}")
@@ -160,24 +166,6 @@ object RfidController {
         client.sendSynMsg(stop)
         running.set(false)
         Log.i(TAG, "inventory stopped rtCode=${stop.rtCode}")
-    }
-
-    /** Map RfidRange -> (power dBm, RSSI floor dBm). Tune on bench. */
-    fun setRange(range: RfidRange) {
-        val (dbm, rssiFloor) = when (range) {
-            RfidRange.WEAK   -> 20 to -75   // tag close, clean reads only
-            RfidRange.MEDIUM -> 27 to -78   // verify mid — reach blocked / farther tags
-            RfidRange.STRONG -> 33 to 0     // counting day — max power, no floor
-        }
-        rssiFloorDbm = rssiFloor
-        if (!opened.get()) return
-
-        val wasRunning = running.get()
-        if (wasRunning) stopInventory()
-        applyPower(dbm)
-        // Hardware-level RSSI filter (0 = disabled).
-        applyTagLog(rssiTv = rssiFloor, repeatedMs = 0)
-        if (wasRunning) startInventory()
     }
 
     // --- internals ---

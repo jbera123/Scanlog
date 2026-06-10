@@ -3,7 +3,6 @@ package com.example.scanlog.ui.viewmodel
 import android.app.Application
 import androidx.lifecycle.AndroidViewModel
 import androidx.lifecycle.viewModelScope
-import com.example.scanlog.data.RfidRange
 import com.example.scanlog.data.ScanMode
 import com.example.scanlog.data.ScanStore
 import com.example.scanlog.rfid.RfidController
@@ -44,21 +43,6 @@ class SettingsViewModel(app: Application) : AndroidViewModel(app) {
         }
     }
 
-    val rfidRange: StateFlow<RfidRange> =
-        store.rfidRange.stateIn(
-            scope = viewModelScope,
-            started = SharingStarted.Eagerly,
-            initialValue = RfidRange.MEDIUM
-        )
-
-    fun setRfidRange(range: RfidRange) {
-        viewModelScope.launch {
-            store.setRfidRange(range)
-            // Push new power + RSSI floor to the reader.
-            RfidController.setRange(range)
-        }
-    }
-
     val scanMode: StateFlow<ScanMode> =
         store.scanMode.stateIn(
             scope = viewModelScope,
@@ -78,19 +62,6 @@ class SettingsViewModel(app: Application) : AndroidViewModel(app) {
             //   Barcode-only → one shot per press (clean counting)
             // No-op on PDAs without the BLD ScanManager.
             BldScanner.setContinuous(mode == ScanMode.RFID_AND_BARCODE)
-        }
-    }
-
-    val allowRepeatedScans: StateFlow<Boolean> =
-        store.allowRepeatedScans.stateIn(
-            scope = viewModelScope,
-            started = SharingStarted.Eagerly,
-            initialValue = false
-        )
-
-    fun setAllowRepeatedScans(enabled: Boolean) {
-        viewModelScope.launch {
-            store.setAllowRepeatedScans(enabled)
         }
     }
 }
