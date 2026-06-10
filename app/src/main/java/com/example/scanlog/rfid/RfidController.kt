@@ -16,8 +16,11 @@ import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.SupervisorJob
 import kotlinx.coroutines.flow.MutableSharedFlow
+import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.SharedFlow
+import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asSharedFlow
+import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.launch
 import java.util.Hashtable
 import java.util.concurrent.atomic.AtomicBoolean
@@ -78,6 +81,12 @@ object RfidController {
         extraBufferCapacity = 128
     )
     val tagFlow: SharedFlow<String> = _tagFlow.asSharedFlow()
+
+    // Phase 4 — count of distinct EPCs emitted during the current trigger-hold.
+    // Reset on press/release. UI shows it as a "+N" badge so the operator sees the
+    // reader is alive during a long sweep. In-memory only.
+    private val _holdCount = MutableStateFlow(0)
+    val holdCount: StateFlow<Int> = _holdCount.asStateFlow()
 
     // --- Lifecycle (Phase 1): the reader should be OPEN iff RFID mode is active
     // AND the app is in the foreground. AppNav sets rfidActive; MainActivity sets
@@ -196,6 +205,7 @@ object RfidController {
     /** Called on hardware trigger key DOWN. Starts inventory only if gate is open. */
     fun triggerPress() {
         if (!gated.get()) return
+        _holdCount.value = 0
         startInventory()
     }
 
@@ -203,6 +213,7 @@ object RfidController {
     fun triggerRelease() {
         stopInventory()
         lastEmitMs.clear()
+        _holdCount.value = 0
     }
 
     @Synchronized
@@ -262,6 +273,7 @@ object RfidController {
             lastEmitMs[epc] = now
 
             _tagFlow.tryEmit(epc)
+            _holdCount.value = _holdCount.value + 1
         }
         client.onTagEpcOver = HandlerTagEpcOver { _: String?, _: LogBaseEpcOver? -> /* no-op */ }
     }
