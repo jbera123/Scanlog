@@ -43,6 +43,7 @@ import com.example.scanlog.R
 import com.example.scanlog.rfid.RfidController
 import com.example.scanlog.ui.viewmodel.MatchState
 import com.example.scanlog.ui.viewmodel.MatchViewModel
+import com.example.scanlog.util.BldScanner
 import com.example.scanlog.util.ScannerConstants
 import kotlinx.coroutines.delay
 
@@ -57,6 +58,15 @@ fun MatchScreen(vm: MatchViewModel = viewModel()) {
     val snackbarMessage by vm.snackbarMessage.collectAsState()
     val snackbarHostState = remember { SnackbarHostState() }
     val mainHandler = remember { Handler(Looper.getMainLooper()) }
+
+    // Phase 5 — compare mode is single-fire: one barcode decode per trigger press,
+    // so each RFID tag lines up one-to-one with the barcode it's verified against.
+    // Restore continuous sweep (the Scan-tab default) when leaving. No-op on PDAs
+    // without the BLD ScanManager.
+    DisposableEffect(Unit) {
+        BldScanner.setContinuous(false)
+        onDispose { BldScanner.setContinuous(true) }
+    }
 
     fun doublePulseVibrate() {
         val vibrator = runCatching {
