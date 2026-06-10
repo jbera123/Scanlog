@@ -3,6 +3,7 @@ package com.example.scanlog
 import android.app.Application
 import com.example.scanlog.data.ScanMode
 import com.example.scanlog.data.ScanStore
+import com.example.scanlog.rfid.RfidController
 import com.example.scanlog.util.BldScanner
 import com.example.scanlog.util.CountExporter
 import java.time.LocalDate
@@ -44,6 +45,10 @@ class ScanlogApp : Application() {
             // before the user even touches the trigger.
             val mode = store.scanMode.first()
             BldScanner.setContinuous(mode == ScanMode.RFID_AND_BARCODE)
+
+            // Cache the persisted range (power) so it's applied when the reader is
+            // first opened. This only sets a field — it does not open the reader.
+            RfidController.setRange(store.rfidRange.first())
 
             // NOTE: the UHF reader is deliberately NOT opened here. It is opened
             // lazily by AppNav only when the user is in RFID_AND_BARCODE mode, so
