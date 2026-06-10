@@ -19,6 +19,20 @@ class MainActivity : ComponentActivity() {
         }
     }
 
+    // Phase 1 — sleep/background recovery. Device sleep can kill the serial/power
+    // while our `opened` flag stays stale. Tell the reader when we go fore/back so
+    // it releases on background and re-opens a fresh reader on foreground (only if
+    // RFID mode is active). One-shot, no polling.
+    override fun onResume() {
+        super.onResume()
+        RfidController.onAppForeground()
+    }
+
+    override fun onStop() {
+        super.onStop()
+        RfidController.onAppBackground()
+    }
+
     /**
      * Intercept the hardware trigger button. PDAs dispatch different keycodes
      * depending on vendor — the demo used 619, but other common codes are 280,

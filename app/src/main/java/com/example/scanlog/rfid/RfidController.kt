@@ -11,9 +11,13 @@ import com.gg.reader.api.protocol.gx.MsgBaseInventoryEpc
 import com.gg.reader.api.protocol.gx.MsgBaseSetPower
 import com.gg.reader.api.protocol.gx.MsgBaseSetTagLog
 import com.gg.reader.api.protocol.gx.MsgBaseStop
+import kotlinx.coroutines.CoroutineScope
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.SupervisorJob
 import kotlinx.coroutines.flow.MutableSharedFlow
 import kotlinx.coroutines.flow.SharedFlow
 import kotlinx.coroutines.flow.asSharedFlow
+import kotlinx.coroutines.launch
 import java.util.Hashtable
 import java.util.concurrent.atomic.AtomicBoolean
 
@@ -60,6 +64,45 @@ object RfidController {
         extraBufferCapacity = 128
     )
     val tagFlow: SharedFlow<String> = _tagFlow.asSharedFlow()
+
+    // --- Lifecycle (Phase 1): the reader should be OPEN iff RFID mode is active
+    // AND the app is in the foreground. AppNav sets rfidActive; MainActivity sets
+    // appForeground via onResume/onStop. After a device sleep the OS can kill the
+    // serial/power while `opened` stays stale — backgrounding releases the reader
+    // and foregrounding re-opens a FRESH one, recovering it (the demo's pattern).
+    // reconcile runs one-shot on a coroutine (NEVER a polling loop — that was the
+    // health-check race that corrupted the serial).
+    @Volatile private var rfidActive = false
+    @Volatile private var appForeground = true
+    private val lifecycleScope = CoroutineScope(SupervisorJob() + Dispatchers.IO)
+
+    /** AppNav: true while scan mode == RFID_AND_BARCODE. */
+    fun setRfidActive(active: Boolean) {
+        rfidActive = active
+        lifecycleScope.launch { reconcile() }
+    }
+
+    /** MainActivity.onResume — app came to foreground. */
+    fun onAppForeground() {
+        appForeground = true
+        lifecycleScope.launch { reconcile() }
+    }
+
+    /** MainActivity.onStop — app went to background. */
+    fun onAppBackground() {
+        appForeground = false
+        lifecycleScope.launch { reconcile() }
+    }
+
+    @Synchronized
+    private fun reconcile() {
+        val shouldOpen = rfidActive && appForeground
+        if (shouldOpen && !opened.get()) {
+            init()
+        } else if (!shouldOpen && opened.get()) {
+            release()
+        }
+    }
 
     /**
      * Power up and open serial. Returns true if the reader handshook OK.
