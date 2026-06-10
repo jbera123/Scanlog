@@ -55,9 +55,29 @@ a phone session; hardware behaviour is confirmed later on the user's PC.
   6-digit serial. Catalog maps prefix → SKU. Rolled up by category in Scan tab.
 - **Scan modes:** `BARCODE_ONLY` (barcode receiver active, RFID off) vs
   `RFID_AND_BARCODE` (Scan tab ignores barcode, pure RFID; Match tab compares).
-- **Range tiers:** WEAK 20dBm/-75, MEDIUM 27dBm/-78, STRONG 33dBm/no-floor.
 - **Dedup:** each unique EPC counts once per day (per-day `seenEpcs` set, plus an
   in-memory fast-path cache in `ScanViewModel`).
+
+## ⚠️ RFID reader — known-good config (DO NOT regress)
+
+These were each hard-won by debugging on hardware. Re-introducing any of them
+silently breaks RFID or crashes the app (verified, then fixed — see git log).
+
+- **NO RSSI floor.** `RfidController.FIXED_RSSI_FLOOR = 0` (no filter), power
+  `FIXED_POWER_DBM = 33`. A non-zero floor (e.g. -70) filters out tags at both
+  the firmware (`MsgBaseSetTagLog`) and callback level → **reads nothing**. The
+  working demo (`UHFReaderDemo` `ReadFragment6c`) sets no RSSI filter at all.
+- **NO background thread may touch the serial.** A periodic health-check ping
+  from an IO thread raced the main-thread inventory commands on `/dev/ttyS3` and
+  corrupted the reader (~30s "works then dies"). There is no health check now;
+  the reader is commanded only from the main thread (trigger) + startup.
+- **Reader is opened lazily, only in `RFID_AND_BARCODE` mode** (AppNav's scanMode
+  effect: `init()` on entering RFID mode, `release()` on leaving). Barcode-only
+  mode never powers the reader — keeps the default app crash-proof.
+- **Barcode receivers MUST be `RECEIVER_EXPORTED`** on Android 13+ (API 33). The
+  scan broadcast comes from the PDA scanner service (a separate app);
+  `RECEIVER_NOT_EXPORTED` silently drops it. See `ScanScreen`/`MatchScreen`.
+- The reader module has **no physical buzzer** — audio is `SimpleBeep` only.
 - en/zh SKU labels: `app/src/main/res/raw/barcode_map.csv` (synced from the
   user's `sorted_order_2.xlsx`).
 
