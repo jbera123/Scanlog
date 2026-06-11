@@ -69,11 +69,17 @@ object RfidController {
     // Current RSSI floor (dBm). 0 == no filter (always 0 — see above).
     @Volatile private var rssiFloorDbm: Int = RSSI_FLOOR
 
-    // Phase 2 — per-EPC throttle. The reader reports a tag held in the field many
-    // times/sec; this drops repeats of the SAME epc within the window so a long
-    // hold doesn't flood the recording path. Purely in-memory (never touches the
-    // serial). Cleared on triggerRelease so a fresh press treats every tag as new.
-    private const val THROTTLE_MS = 1000L
+    // Per-EPC throttle. The reader reports a tag held in the field many times/sec;
+    // this drops repeats of the SAME epc within the window so a hold doesn't flood
+    // the recording path. Purely in-memory (never touches the serial). Cleared on
+    // triggerRelease.
+    //
+    // Kept SHORT (250ms) on purpose: a long window blocked INTENTIONAL re-scans of
+    // the same tag — which both repeated-scans test mode and the compare workflow
+    // rely on (rescanning one tag made it look "stuck for ~1s"). 250ms is below
+    // human re-scan cadence yet still caps the in-field flood. Normal counting is
+    // unaffected (the ScanViewModel seenEpcCache already drops dup reads).
+    private const val THROTTLE_MS = 250L
     private val lastEmitMs = java.util.concurrent.ConcurrentHashMap<String, Long>()
 
     private val _tagFlow = MutableSharedFlow<String>(
