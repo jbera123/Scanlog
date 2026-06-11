@@ -140,6 +140,32 @@ class ScanStore(private val context: Context) {
         return out
     }
 
+    /**
+     * Drops the seenEpcs sets of every day EXCEPT today. Past days only need their
+     * final counts — their EPC lists exist purely for same-day dedup and become
+     * dead weight after midnight, yet every scan re-parses + rewrites the whole
+     * days_json blob. Pruning keeps per-scan cost flat over weeks of use.
+     * Called once at app start (ScanlogApp). Counts are untouched.
+     */
+    suspend fun pruneOldSeenEpcs() {
+        context.dataStore.edit { prefs ->
+            val root = parseAll(prefs[Keys.JSON].orEmpty())
+            val today = todayKey()
+            var changed = false
+            val it = root.keys()
+            while (it.hasNext()) {
+                val day = it.next()
+                if (day == today) continue
+                val d = root.getJSONObject(day)
+                if (d.has("seenEpcs")) {
+                    d.remove("seenEpcs")
+                    changed = true
+                }
+            }
+            if (changed) prefs[Keys.JSON] = root.toString()
+        }
+    }
+
     /** Days already auto-exported. */
     suspend fun getExportedDays(): Set<String> {
         val prefs = context.dataStore.data.first()
