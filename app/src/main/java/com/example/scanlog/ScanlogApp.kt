@@ -59,6 +59,11 @@ class ScanlogApp : Application() {
             // to Downloads yet get exported now. Today's data is left alone.
             runCatching { autoExportPastDays(store) }
                 .onFailure { android.util.Log.w("ScanlogApp", "auto-export error: ${it.message}") }
+
+            // Drop past days' seenEpcs (dedup lists) so days_json doesn't grow
+            // unbounded — keeps per-scan parse/write cost flat. Counts untouched.
+            runCatching { store.pruneOldSeenEpcs() }
+                .onFailure { android.util.Log.w("ScanlogApp", "prune error: ${it.message}") }
         }
     }
 }
