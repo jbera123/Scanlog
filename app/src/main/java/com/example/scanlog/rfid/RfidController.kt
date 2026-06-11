@@ -196,7 +196,13 @@ object RfidController {
      * Set the read-range tier. Tunes transmit POWER only — the RSSI floor stays 0
      * so no tag that responds is ever filtered out. Safe to call before the reader
      * is open (caches the power; applied on next init()).
+     *
+     * @Synchronized: applyPower() writes the serial; without the monitor a range
+     * change from Settings (main thread) could write concurrently with a
+     * reconcile()/init()/release() on the lifecycle IO thread — the two-threads-on-
+     * one-serial hazard that corrupted the reader before.
      */
+    @Synchronized
     fun setRange(range: RfidRange) {
         powerDbm = powerFor(range)
         if (opened.get()) applyPower(powerDbm)

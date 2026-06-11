@@ -14,8 +14,8 @@ android {
         applicationId = "com.example.scanlog"
         minSdk = 26
         targetSdk = 34
-        versionCode = 6
-        versionName = "1.5-compare"
+        versionCode = 7
+        versionName = "1.6-rangesync"
     }
 
     buildFeatures { compose = true }
