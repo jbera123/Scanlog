@@ -61,7 +61,7 @@ object RfidController {
     @Volatile private var powerDbm: Int = 33
 
     private fun powerFor(range: RfidRange): Int = when (range) {
-        RfidRange.WEAK   -> 18   // ~close-only verify
+        RfidRange.WEAK   -> 12   // very-close only (~hand's reach) — small scan area
         RfidRange.MEDIUM -> 26   // mid range
         RfidRange.STRONG -> 33   // max range, counting
     }
