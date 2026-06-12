@@ -71,6 +71,7 @@ fun ScanScreen(
 
     val scanMode by settingsVm.scanMode.collectAsState()
     val holdCount by RfidController.holdCount.collectAsState()
+    val lastRssi by RfidController.lastRssi.collectAsState()
 
     val recentEvents by vm.recentEvents.collectAsState()
     val todayCounts by vm.todayCounts.collectAsState()
@@ -251,6 +252,16 @@ fun ScanScreen(
                         text = "+$holdCount",
                         style = MaterialTheme.typography.titleMedium,
                         color = Color(0xFF00C853)
+                    )
+                }
+
+                // Live last-read RSSI — calibrate the Settings RSSI floor against this.
+                if (scanMode == ScanMode.RFID_AND_BARCODE && lastRssi != 0) {
+                    Spacer(Modifier.height(4.dp))
+                    Text(
+                        text = stringResource(R.string.scan_last_rssi, lastRssi),
+                        style = MaterialTheme.typography.bodyMedium,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant
                     )
                 }
 

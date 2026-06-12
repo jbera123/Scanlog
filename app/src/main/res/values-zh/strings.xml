@@ -52,6 +52,9 @@
     <string name="settings_apply">应用</string>
     <string name="settings_rfid_range">RFID 识别距离</string>
     <string name="settings_rfid_range_hint">弱 = 仅近距核验。中 = 兼顾遮挡 / 较远标签。强 = 盘点最大距离。</string>
+    <string name="settings_rssi_floor">信号阈值 (dBm)</string>
+    <string name="settings_rssi_floor_hint">0 = 关闭（全部读取）。输入负数阈值，信号弱于此值的标签将被忽略。越接近 0，识别范围越小。可在扫描页查看“上次读取”来确定数值。</string>
+    <string name="scan_last_rssi">上次读取：%1$d dBm</string>
     <string name="settings_scan_mode">扫描模式</string>
     <string name="settings_scan_mode_hint">RFID + 条码模式启用比对页。仅条码模式会隐藏该页。</string>
     <string name="settings_allow_repeated">允许重复扫描（测试）</string>

@@ -37,8 +37,10 @@ fun SettingsScreen(vm: SettingsViewModel = viewModel()) {
     val scanMode by vm.scanMode.collectAsState()
     val rfidRange by vm.rfidRange.collectAsState()
     val allowRepeated by vm.allowRepeatedScans.collectAsState()
+    val rssiFloor by vm.rssiFloor.collectAsState()
 
     var secondsText by remember(windowMs) { mutableStateOf((windowMs / 1000L).toString()) }
+    var rssiText by remember(rssiFloor) { mutableStateOf(rssiFloor.toString()) }
 
     Column(
         modifier = Modifier
@@ -169,6 +171,30 @@ fun SettingsScreen(vm: SettingsViewModel = viewModel()) {
                     style = MaterialTheme.typography.bodySmall,
                     color = MaterialTheme.colorScheme.onSurfaceVariant
                 )
+            }
+        }
+
+        Card {
+            Column(
+                modifier = Modifier.padding(16.dp),
+                verticalArrangement = Arrangement.spacedBy(12.dp)
+            ) {
+                Text(
+                    text = stringResource(R.string.settings_rssi_floor),
+                    style = MaterialTheme.typography.bodyLarge
+                )
+                OutlinedTextField(
+                    value = rssiText,
+                    onValueChange = { rssiText = it.filter { c -> c.isDigit() || c == '-' } },
+                    supportingText = { Text(stringResource(R.string.settings_rssi_floor_hint)) },
+                    modifier = Modifier.fillMaxWidth(),
+                    singleLine = true
+                )
+                Button(
+                    onClick = { vm.setRssiFloor(rssiText.toIntOrNull() ?: 0) }
+                ) {
+                    Text(stringResource(R.string.settings_apply))
+                }
             }
         }
     }

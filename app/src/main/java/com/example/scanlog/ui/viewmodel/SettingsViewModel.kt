@@ -58,6 +58,20 @@ class SettingsViewModel(app: Application) : AndroidViewModel(app) {
         }
     }
 
+    val rssiFloor: StateFlow<Int> =
+        store.rssiFloor.stateIn(
+            scope = viewModelScope,
+            started = SharingStarted.Eagerly,
+            initialValue = 0
+        )
+
+    fun setRssiFloor(dbm: Int) {
+        viewModelScope.launch {
+            store.setRssiFloor(dbm)
+            RfidController.setRssiFloor(dbm)
+        }
+    }
+
     val scanMode: StateFlow<ScanMode> =
         store.scanMode.stateIn(
             scope = viewModelScope,

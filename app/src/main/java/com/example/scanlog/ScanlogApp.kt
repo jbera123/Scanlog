@@ -49,6 +49,7 @@ class ScanlogApp : Application() {
             // Cache the persisted range (power) so it's applied when the reader is
             // first opened. This only sets a field — it does not open the reader.
             RfidController.setRange(store.rfidRange.first())
+            RfidController.setRssiFloor(store.rssiFloor.first())
 
             // NOTE: the UHF reader is deliberately NOT opened here. It is opened
             // lazily by AppNav only when the user is in RFID_AND_BARCODE mode, so
