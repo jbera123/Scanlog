@@ -66,8 +66,19 @@ object RfidController {
         RfidRange.STRONG -> 33   // max range, counting
     }
 
-    // Current RSSI floor (dBm). 0 == no filter (always 0 — see above).
+    // Current RSSI floor (dBm). 0 == no filter. Set from Settings via setRssiFloor;
+    // applied ONLY in the callback (the firmware filter stays off — that's what read
+    // nothing before). A tag weaker than this is dropped; closer to 0 = smaller area.
     @Volatile private var rssiFloorDbm: Int = RSSI_FLOOR
+
+    /** Set the in-callback RSSI cutoff (dBm). 0 = off. No serial I/O. */
+    fun setRssiFloor(dbm: Int) {
+        rssiFloorDbm = dbm
+    }
+
+    // Last read's signal strength (dBm), for calibrating the floor from the UI.
+    private val _lastRssi = MutableStateFlow(0)
+    val lastRssi: StateFlow<Int> = _lastRssi.asStateFlow()
 
     // Per-EPC throttle. The reader reports a tag held in the field many times/sec;
     // this drops repeats of the SAME epc within the window so a hold doesn't flood
@@ -273,6 +284,7 @@ object RfidController {
             if (info.result != 0) return@HandlerTagEpcLog
             // getRssi() is a raw value; getRssidBm() is the signed dBm. Prefer dBm when nonzero.
             val dbm = info.rssidBm.takeIf { it != 0 } ?: info.rssi
+            _lastRssi.value = dbm   // surface every read for floor calibration
             val floor = rssiFloorDbm
             if (floor != 0 && dbm < floor) return@HandlerTagEpcLog
             val epc = info.epc?.trim()?.uppercase() ?: return@HandlerTagEpcLog

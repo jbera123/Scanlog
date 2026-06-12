@@ -52,6 +52,9 @@
     <string name="settings_apply">Apply</string>
     <string name="settings_rfid_range">RFID detection range</string>
     <string name="settings_rfid_range_hint">Weak = close-only verify. Medium = reach blocked / farther tags. Strong = max range for counting days.</string>
+    <string name="settings_rssi_floor">RSSI floor (dBm)</string>
+    <string name="settings_rssi_floor_hint">0 = off (read all). Enter a negative cutoff — tags weaker than it are ignored. Closer to 0 = smaller area. Watch \"Last read\" on the Scan tab to pick a value.</string>
+    <string name="scan_last_rssi">Last read: %1$d dBm</string>
     <string name="settings_scan_mode">Scan mode</string>
     <string name="settings_scan_mode_hint">RFID + Barcode enables the Match tab for cross-reference. Barcode only hides it.</string>
     <string name="settings_allow_repeated">Allow repeated scans (testing)</string>

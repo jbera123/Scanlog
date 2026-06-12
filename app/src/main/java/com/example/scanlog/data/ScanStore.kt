@@ -2,6 +2,7 @@ package com.example.scanlog.data
 
 import android.content.Context
 import androidx.datastore.preferences.core.edit
+import androidx.datastore.preferences.core.intPreferencesKey
 import androidx.datastore.preferences.core.longPreferencesKey
 import androidx.datastore.preferences.core.stringPreferencesKey
 import com.example.scanlog.data.RfidRange
@@ -36,6 +37,9 @@ class ScanStore(private val context: Context) {
         val DUP_GUARD = stringPreferencesKey("dup_guard_enabled") // "true"/"false"
         val DUP_WINDOW_MS = longPreferencesKey("dup_window_ms")
         val RFID_RANGE = stringPreferencesKey("rfid_range")
+        // RSSI floor in dBm (0 = off). Tags weaker than this are dropped in the
+        // callback. Closer to 0 = only very-close tags = smaller scan area.
+        val RSSI_FLOOR = intPreferencesKey("rssi_floor")
         val SCAN_MODE = stringPreferencesKey("scan_mode")
 
         // Testing aid: when "true", the per-day unique-EPC dedup is bypassed so the
@@ -226,6 +230,13 @@ class ScanStore(private val context: Context) {
 
     suspend fun setRfidRange(range: RfidRange) {
         context.dataStore.edit { it[Keys.RFID_RANGE] = range.name }
+    }
+
+    val rssiFloor: Flow<Int> =
+        context.dataStore.data.map { prefs -> prefs[Keys.RSSI_FLOOR] ?: 0 }
+
+    suspend fun setRssiFloor(dbm: Int) {
+        context.dataStore.edit { it[Keys.RSSI_FLOOR] = dbm }
     }
 
     val scanMode: Flow<ScanMode> =
