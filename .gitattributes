@@ -1,0 +1,16 @@
+# Normalize text to LF in the repo; check out platform-native.
+* text=auto
+
+# Shell script must stay LF (breaks on macOS/Linux otherwise).
+gradlew text eol=lf
+# Windows batch stays CRLF.
+*.bat text eol=crlf
+
+# Binaries — never touch line endings.
+*.jar binary
+*.so  binary
+*.apk binary
+*.png binary
+*.jpg binary
+*.mp3 binary
+*.keystore binary
