@@ -12,7 +12,10 @@ import java.io.InputStreamReader
  *   code,zh
  *   1234567890,苹果
  *
- * If a code is not present, displayText(code) returns code only.
+ * If a code is not present exactly, trailing affixes ("-A", "-1", …) are
+ * stripped and matched against similarly-stripped CSV codes so label
+ * variants still get a translation. Tallies stay per exact scanned code.
+ * If nothing matches, displayText(code) returns code only.
  */
 class BarcodeCatalog(context: Context) {
 
@@ -21,10 +24,52 @@ class BarcodeCatalog(context: Context) {
     // Lazy-load once per instance
     private val map: Map<String, String> by lazy { loadCsv() }
 
+    /**
+     * Base-code index: CSV code with trailing affixes stripped -> zh.
+     * Lets label variants (with/without "-A", "-1", …) resolve to the same
+     * Chinese name. Counts are NEVER keyed on this — ScanStore tallies the
+     * exact scanned code — this only affects the displayed translation.
+     */
+    private val baseMap: Map<String, String> by lazy {
+        val out = LinkedHashMap<String, String>()
+        for ((code, zh) in map) {
+            for (b in baseCandidates(code)) out.putIfAbsent(b, zh)
+        }
+        out
+    }
+
     fun chineseNameFor(codeRaw: String): String? {
         val code = normalize(codeRaw)
         if (code.isEmpty()) return null
-        return map[code]
+        map[code]?.let { return it }
+        // Fallback: strip affixes from the scanned code, progressively, and
+        // match against the same-stripped CSV codes.
+        for (b in baseCandidates(code)) {
+            baseMap[b]?.let { return it }
+        }
+        return null
+    }
+
+    /**
+     * Progressively strip trailing affix tokens: a single letter (revision,
+     * e.g. "-A") or a single digit (variant, e.g. "-1"). Returns candidates
+     * from most to least specific, starting with the code itself.
+     * "OSEAT4-CR-1-A" -> ["OSEAT4-CR-1-A", "OSEAT4-CR-1", "OSEAT4-CR"]
+     */
+    private fun baseCandidates(code: String): List<String> {
+        val out = ArrayList<String>(3)
+        var cur = code
+        out.add(cur)
+        while (true) {
+            val idx = cur.lastIndexOf('-')
+            if (idx <= 0) break
+            val tail = cur.substring(idx + 1)
+            val isAffix = tail.length == 1 && (tail[0].isLetter() || tail[0].isDigit())
+            if (!isAffix) break
+            cur = cur.substring(0, idx)
+            out.add(cur)
+        }
+        return out
     }
 
     fun displayText(codeRaw: String): String {
