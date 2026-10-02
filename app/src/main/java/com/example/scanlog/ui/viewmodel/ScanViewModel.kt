@@ -48,6 +48,19 @@ class ScanViewModel(app: Application) : AndroidViewModel(app) {
     private val _recentEvents = MutableStateFlow<List<ScanEvent>>(emptyList())
     val recentEvents: StateFlow<List<ScanEvent>> = _recentEvents.asStateFlow()
 
+    // RFID tags the reader saw but the catalog does not recognise (EPC prefix not in
+    // rfid_barcode_map.csv). They are NOT counted. Kept in memory, newest first, so
+    // the Scan screen can name the rejected tag instead of showing a generic message.
+    private val _unknownEpcs = MutableStateFlow<List<String>>(emptyList())
+    val unknownEpcs: StateFlow<List<String>> = _unknownEpcs.asStateFlow()
+
+    fun noteUnknownTag(epcRaw: String) {
+        val epc = epcRaw.trim().uppercase()
+        if (epc.isEmpty()) return
+        val cur = _unknownEpcs.value
+        if (epc !in cur) _unknownEpcs.value = (listOf(epc) + cur).take(5)
+    }
+
     fun playBeep(volume: Float = 1.0f, rate: Float = 1.15f) {
         beep.play(volume = volume, rate = rate)
     }

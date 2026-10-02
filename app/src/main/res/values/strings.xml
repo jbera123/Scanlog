@@ -74,4 +74,6 @@
     <string name="delete_day_text">Delete all scans for %1$s?</string>
 
 
+    <string name="scan_unknown_tag">Unrecognised tag %1$s, not counted</string>
+    <string name="scan_unknown_tags">Unrecognised tags, not counted: %1$s</string>
 </resources>

@@ -74,6 +74,7 @@ fun ScanScreen(
     val lastRssi by RfidController.lastRssi.collectAsState()
 
     val recentEvents by vm.recentEvents.collectAsState()
+    val unknownEpcs by vm.unknownEpcs.collectAsState()
     val todayCounts by vm.todayCounts.collectAsState()
 
     val today = remember { LocalDate.now().toString() }
@@ -86,7 +87,8 @@ fun ScanScreen(
     var flashToken by remember { mutableIntStateOf(0) }
     var failToken by remember { mutableIntStateOf(0) }
 
-    fun triggerFail() { failToken++ }
+    var failMessage by remember { mutableStateOf<String?>(null) }
+    fun triggerFail(message: String? = null) { failMessage = message; failToken++ }
     fun triggerSuccess() { flashToken++ }
 
     // Main thread handler (safe for BroadcastReceiver callback)
@@ -130,17 +132,17 @@ fun ScanScreen(
         val now = System.currentTimeMillis()
         if (now - lastFailShownMs < 3000L) return@LaunchedEffect
         lastFailShownMs = now
-        snackbarHostState.showSnackbar(message = context.getString(R.string.scan_not_logged))
+        snackbarHostState.showSnackbar(message = failMessage ?: context.getString(R.string.scan_not_logged))
     }
 
-    fun feedback(ok: Boolean) {
+    fun feedback(ok: Boolean, failMsg: String? = null) {
         mainHandler.post {
             if (ok) {
                 vm.playBeep(volume = 1.0f, rate = 1.15f)
                 doublePulseVibrate()
                 triggerSuccess()
             } else {
-                triggerFail()
+                triggerFail(failMsg)
             }
         }
     }
@@ -160,7 +162,10 @@ fun ScanScreen(
         if (trimmed.isEmpty()) return
         val entry = rfidCatalog.lookup(trimmed)
         if (entry == null) {
-            feedback(false)
+            // Not one of the known category prefixes: not counted, but show WHICH tag
+            // was rejected so it never looks like the gun missed it.
+            vm.noteUnknownTag(trimmed)
+            feedback(false, context.getString(R.string.scan_unknown_tag, trimmed.uppercase()))
             return
         }
         vm.recordRfidTag(trimmed, entry.barcode) { ok ->
@@ -262,6 +267,15 @@ fun ScanScreen(
                         text = stringResource(R.string.scan_last_rssi, lastRssi),
                         style = MaterialTheme.typography.bodyMedium,
                         color = MaterialTheme.colorScheme.onSurfaceVariant
+                    )
+                }
+
+                if (unknownEpcs.isNotEmpty()) {
+                    Spacer(Modifier.height(4.dp))
+                    Text(
+                        text = stringResource(R.string.scan_unknown_tags, unknownEpcs.joinToString(", ")),
+                        style = MaterialTheme.typography.bodyMedium,
+                        color = MaterialTheme.colorScheme.error
                     )
                 }
 
