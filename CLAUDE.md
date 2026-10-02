@@ -81,6 +81,37 @@ silently breaks RFID or crashes the app (verified, then fixed — see git log).
 - en/zh SKU labels: `app/src/main/res/raw/barcode_map.csv` (synced from the
   user's `sorted_order_2.xlsx`).
 
+## PDA facts and the "RFID looks broken" checklist (BLD T02, verified Oct 2026)
+
+Check these in order before suspecting hardware or the reader code:
+
+1. **Scan mode.** A fresh install, or any restored barcode-only data store, starts
+   in `BARCODE_ONLY`: the reader is never powered and the trigger does nothing for
+   RFID. Settings → Scan mode → RFID + Barcode. In that mode the Scan tab ignores
+   barcodes, so switch back to Barcode only for box scanning.
+2. **A tag seems "missing".** Only EPCs whose prefix is in `rfid_barcode_map.csv`
+   (AA..BC) are counted. Any other EPC is rejected; since 2.1 it is listed in red on
+   the Scan screen as "not counted". The reader reports every tag in range, even on
+   a quarter-second tap, so a missing result is almost always an unrecognised EPC.
+3. **Dedup.** Each EPC counts once per day, and the PDA clock can be far off, so a
+   tag counted earlier "today" is silently ignored (the "allow repeated scans" test
+   toggle bypasses this).
+
+Facts about the device:
+
+- **Gun trigger = Android keycode 619** (`KEYCODE_KEY_20`; kernel IRQ "handle key",
+  scancode 51 on `gpio_keys`). The firmware starts the barcode decoder on it (扫描
+  app → 手柄按键) but still delivers the key to apps. The side scan keys are 620-623
+  and are not in `TRIGGER_KEYCODES`.
+- The UHF module keeps its settings (power, frequency, baseband session/flag,
+  tag-log filter) across power-off. On this PDA they read healthy: power 33,
+  session 3, flag A/B, tag-log 0/0.
+- The system RFID server (`com.bld.server.rfid`) is switched off (`rfid_on=0`); the
+  app talks to the module directly on `/dev/ttyS3`.
+- Uninstalling wipes the data store, and an install made on another machine is
+  signed with a different key. Prefer side-by-side test packages and the recipes in
+  `docs/PDA_TESTING.md`.
+
 ## Build
 
 `./gradlew assembleDebug` — output: `app/build/outputs/apk/debug/app-debug.apk`.
