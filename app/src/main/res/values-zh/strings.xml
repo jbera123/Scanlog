@@ -74,4 +74,6 @@
     <string name="delete_day_text">要删除 %1$s 的全部记录吗？</string>
 
 
+    <string name="scan_unknown_tag">未识别标签 %1$s，未计数</string>
+    <string name="scan_unknown_tags">未识别标签（未计数）：%1$s</string>
 </resources>
