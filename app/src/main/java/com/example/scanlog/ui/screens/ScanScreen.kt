@@ -75,6 +75,7 @@ fun ScanScreen(
 
     val recentEvents by vm.recentEvents.collectAsState()
     val todayCounts by vm.todayCounts.collectAsState()
+    val canUndo by vm.canUndo.collectAsState()
 
     val today = remember { LocalDate.now().toString() }
     val total = remember(todayCounts) { todayCounts.values.sum() }
@@ -301,7 +302,7 @@ fun ScanScreen(
                 OutlinedButton(
                     onClick = { showUndoConfirm = true },
                     modifier = Modifier.fillMaxWidth(),
-                    enabled = total > 0
+                    enabled = canUndo
                 ) {
                     Text(stringResource(R.string.undo))
                 }
