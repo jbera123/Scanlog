@@ -33,6 +33,10 @@ class ScanViewModel(app: Application) : AndroidViewModel(app) {
     val todayCounts: StateFlow<Map<String, Int>> =
         store.todayCounts.stateIn(viewModelScope, SharingStarted.Eagerly, emptyMap())
 
+    // Whether Undo has anything left to step back over (drives the button).
+    val canUndo: StateFlow<Boolean> =
+        store.canUndoToday.stateIn(viewModelScope, SharingStarted.Eagerly, false)
+
     // In-memory mirror of today's seenEpcs. Read every RFID scan first; if the
     // EPC is already in here we skip the DataStore round-trip and answer "dup"
     // instantly. Backed by a StateFlow so it picks up persisted EPCs at startup
@@ -122,7 +126,16 @@ class ScanViewModel(app: Application) : AndroidViewModel(app) {
 
     fun undo() {
         viewModelScope.launch {
-            store.undoLast()
+            val undone = store.undoLast() ?: return@launch
+            // Keep the on-screen list in step with the store: drop the newest
+            // row for the code that was just undone (the list is newest-first,
+            // and only the very last scan can be undone, so that row is the
+            // one whose count was just subtracted).
+            val events = _recentEvents.value
+            val idx = events.indexOfFirst { it.code == undone }
+            if (idx >= 0) {
+                _recentEvents.value = events.filterIndexed { i, _ -> i != idx }
+            }
         }
     }
 

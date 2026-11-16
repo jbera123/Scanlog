@@ -23,7 +23,10 @@ data class DayState(
     val lastTsMs: Long? = null,
     // Unique RFID EPCs already counted today. Used to prevent double-counting
     // the same physical tag under its rolled-up category label.
-    val seenEpcs: Set<String> = emptySet()
+    val seenEpcs: Set<String> = emptySet(),
+    // Today's scans in order, oldest first, capped at ScanStore.MAX_HISTORY.
+    // Lets Undo step back through several scans, not just the last one.
+    val history: List<String> = emptyList()
 )
 
 
@@ -88,7 +91,18 @@ class ScanStore(private val context: Context) {
             buildSet { for (i in 0 until arr.length()) add(arr.getString(i)) }
         } else emptySet()
 
-        return DayState(counts = counts, lastCode = lastCode, lastTsMs = lastTs, seenEpcs = seen)
+        val history: List<String> = if (d.has("history")) {
+            val arr = d.getJSONArray("history")
+            buildList { for (i in 0 until arr.length()) add(arr.getString(i)) }
+        } else emptyList()
+
+        return DayState(
+            counts = counts,
+            lastCode = lastCode,
+            lastTsMs = lastTs,
+            seenEpcs = seen,
+            history = history
+        )
     }
 
     private fun writeDay(root: JSONObject, day: String, state: DayState) {
@@ -107,6 +121,12 @@ class ScanStore(private val context: Context) {
             d.put("seenEpcs", arr)
         }
 
+        if (state.history.isNotEmpty()) {
+            val arr = JSONArray()
+            state.history.forEach { arr.put(it) }
+            d.put("history", arr)
+        }
+
         root.put(day, d)
     }
 
@@ -123,6 +143,14 @@ class ScanStore(private val context: Context) {
         context.dataStore.data.map { prefs ->
             val root = parseAll(prefs[Keys.JSON].orEmpty())
             readDay(root, todayKey()).seenEpcs
+        }
+
+    /** True while today still has a scan that Undo can step back over. */
+    val canUndoToday: Flow<Boolean> =
+        context.dataStore.data.map { prefs ->
+            val d = readDay(parseAll(prefs[Keys.JSON].orEmpty()), todayKey())
+            d.history.any { (d.counts[it] ?: 0) > 0 } ||
+                    (d.lastCode?.let { (d.counts[it] ?: 0) > 0 } == true)
         }
 
     fun dayCounts(day: String): Flow<Map<String, Int>> =
@@ -163,6 +191,11 @@ class ScanStore(private val context: Context) {
                 val d = root.getJSONObject(day)
                 if (d.has("seenEpcs")) {
                     d.remove("seenEpcs")
+                    changed = true
+                }
+                // Undo history is only for today's session too.
+                if (d.has("history")) {
+                    d.remove("history")
                     changed = true
                 }
             }
@@ -350,7 +383,8 @@ class ScanStore(private val context: Context) {
             val next = current.copy(
                 counts = newCounts,
                 lastCode = code,
-                lastTsMs = nowMs
+                lastTsMs = nowMs,
+                history = pushHistory(current.history, code)
             )
 
             writeDay(root, day, next)
@@ -403,7 +437,8 @@ class ScanStore(private val context: Context) {
                 counts = newCounts,
                 lastCode = rollup,
                 lastTsMs = nowMs,
-                seenEpcs = current.seenEpcs + epc
+                seenEpcs = current.seenEpcs + epc,
+                history = pushHistory(current.history, rollup)
             )
 
             writeDay(root, day, next)
@@ -416,31 +451,52 @@ class ScanStore(private val context: Context) {
     }
 
 
-    suspend fun undoLast(nowMs: Long = System.currentTimeMillis()) {
+    /**
+     * Subtracts 1 from today's most recent scan. Returns the code that was
+     * undone, or null if there was nothing to undo, so the caller can keep its
+     * own in-memory recent-scan list in step.
+     */
+    suspend fun undoLast(nowMs: Long = System.currentTimeMillis()): String? {
+        var undone: String? = null
         context.dataStore.edit { prefs ->
             val root = parseAll(prefs[Keys.JSON].orEmpty())
             val day = todayKey()
             val current = readDay(root, day)
-            val code = current.lastCode ?: return@edit
-
-            val qty = current.counts[code] ?: 0
-            if (qty <= 0) return@edit
+            // Walk back through today's scan history for the newest scan whose
+            // code still has a count (edits on the Day screen may have zeroed
+            // some). Scans recorded before history existed only have lastCode,
+            // so fall back to that for a single undo.
+            val history = current.history.toMutableList()
+            var code: String? = null
+            while (history.isNotEmpty() && code == null) {
+                val c = history.removeAt(history.lastIndex)
+                if ((current.counts[c] ?: 0) > 0) code = c
+            }
+            if (code == null) {
+                val legacy = current.lastCode
+                if (legacy != null && (current.counts[legacy] ?: 0) > 0) code = legacy
+            }
+            val target = code ?: return@edit
+            val qty = current.counts.getValue(target)
 
             val newCounts = current.counts.toMutableMap()
-            if (qty == 1) newCounts.remove(code) else newCounts[code] = qty - 1
+            if (qty == 1) newCounts.remove(target) else newCounts[target] = qty - 1
 
+            // lastCode stays null after an undo so the duplicate guard does not
+            // block re-scanning the same barcode straight away.
             val next = current.copy(
                 counts = newCounts,
                 lastCode = null,
-                lastTsMs = nowMs
+                lastTsMs = nowMs,
+                history = history
             )
 
             writeDay(root, day, next)
             prefs[Keys.JSON] = root.toString()
 
-            // Optional: We are NOT editing recentEvents on undo (keeps it simple).
-            // If you want undo to remove the latest event entry, we can add that later.
+            undone = target
         }
+        return undone
     }
 
     // --- Existing edit/delete support (keep as-is) ---
@@ -507,6 +563,12 @@ class ScanStore(private val context: Context) {
     }
 
     companion object {
+        /** How many of today's scans Undo can step back over. */
+        const val MAX_HISTORY = 100
+
         fun normalize(s: String): String = s.trim().uppercase()
+
+        private fun pushHistory(history: List<String>, code: String): List<String> =
+            (history + code).takeLast(MAX_HISTORY)
     }
 }
